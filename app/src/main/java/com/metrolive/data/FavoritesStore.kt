@@ -52,7 +52,7 @@ class FavoritesStore(context: Context) {
     fun clearCommute(kind: String) = sp.edit().remove("commute_$kind").apply()
 
     /* ---- 기본 출발역 ---- */
-    fun origin(): String = sp.getString("origin", "시청")!!
+    fun origin(): String = sp.getString("origin", "가산디지털단지")!!
     fun setOrigin(st: String) = sp.edit().putString("origin", st).apply()
 
     companion object {

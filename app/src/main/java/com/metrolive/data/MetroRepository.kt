@@ -68,6 +68,18 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
             .sortedBy { it.position }
     }
 
+    /** 단발 조회 (탑승 세션 폴링용) */
+    suspend fun trainsOnce(lineName: String, baseStation: String, upLine: Boolean): List<Train> =
+        runCatching {
+            val index = StaticData.indexOf(lineName)
+            val sign = if (StaticData.movesForward(lineName, upLine)) 1 else -1
+            merge(
+                api.realtimePosition(lineName = lineName).list,
+                api.realtimeArrival(stationName = baseStation).list,
+                index, upLine, sign,
+            )
+        }.getOrDefault(emptyList())
+
     /** 경로 첫 구간용: 특정 역의 해당 노선 실시간 도착 목록 */
     data class ArrivalInfo(val destination: String, val etaSeconds: Int, val message: String)
 

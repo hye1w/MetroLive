@@ -66,6 +66,13 @@ object StaticData {
     fun transferTip(station: String, fromLine: String, toLine: String): TransferTip? =
         transferTips[Triple(station, fromLine, toLine)]
 
+    /** from→to 이동에 필요한 상/하행(2호선은 내선/외선) 판정 */
+    fun legUp(line: String, from: String, to: String): Boolean {
+        val idx = indexOf(line)
+        val forward = (idx[to] ?: 0) > (idx[from] ?: 0)
+        return if (line == "2호선") forward else !forward
+    }
+
     /** 역간 평균 소요(초) — 위치 보간용, M2에서 시간표 산출값으로 교체 */
     const val AVG_SEGMENT_SECONDS = 110
 

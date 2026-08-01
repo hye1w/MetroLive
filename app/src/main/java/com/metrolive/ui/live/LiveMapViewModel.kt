@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class LiveUiState(
-    val line: String = "2호선",
+    val line: String = "1호선",
     val upLine: Boolean = true,
     val trains: List<Train> = emptyList(),
     val selectedTrainNo: String? = null,
@@ -25,10 +25,12 @@ data class LiveUiState(
     val boarding: BoardingPosition? = null,
 ) {
     val selectedTrain get() = trains.firstOrNull { it.trainNo == selectedTrainNo }
-    /** ETA 기준역: 구간 중간역 (2호선은 시청) */
-    val baseStation: String get() =
-        if (line == "2호선") "시청"
-        else StaticData.segmentOf(line).let { it.getOrNull(it.size / 2)?.name ?: "" }
+    /** ETA 기준역: 기본 출발역이 이 노선에 있으면 그 역, 아니면 구간 중간역 */
+    val baseStation: String get() {
+        val origin = com.metrolive.data.FavoritesStore(com.metrolive.App.instance).origin()
+        if (StaticData.indexOf(line).containsKey(origin)) return origin
+        return StaticData.segmentOf(line).let { it.getOrNull(it.size / 2)?.name ?: "" }
+    }
 }
 
 class LiveMapViewModel(
@@ -69,6 +71,11 @@ class LiveMapViewModel(
                 )
             }
         }
+    }
+
+    fun setLineDirection(line: String, up: Boolean) {
+        _state.value = _state.value.copy(line = line, upLine = up, trains = emptyList(), selectedTrainNo = null)
+        restartPolling()
     }
 
     fun selectLine(line: String) {

@@ -12,107 +12,155 @@ import com.metrolive.MainActivity
 import com.metrolive.data.BoardingPosition
 import com.metrolive.data.MetroRepository
 import com.metrolive.data.StaticData
+import com.metrolive.data.Train
 import kotlinx.coroutines.*
 
 /**
- * 탑승 세션 (C1·C2)
- * - 시작 즉시 칩(진행형 알림) 생성, 세션 종료까지 항상 유지 → One UI 에서 상태바 칩/Now Bar 로 승격
- * - 잠금화면: setVisibility(VISIBILITY_PUBLIC) 이지만 축약(칩) 우선. 탭 → MainActivity 중앙 카드(showWhenLocked)
- * - 하차 1정거장 전: 강 진동 + HIGH 알림 전환(문 방향/계단 방향 포함), 하차까지 그 상태 유지
+ * 다구간 탑승 세션 (환승 포함 경로 안내)
+ * - legs: "노선|출발|도착;노선|출발|도착;…" — 순차 추적
+ * - 각 구간: 탑승 열차를 실시간 위치로 자동 특정(출발역 직전 열차) 후 추적
+ * - 구간 도착: 마지막 구간이면 하차 알림, 아니면 환승 알림(빠른 환승칸) 후 다음 구간으로
+ * - 칩(진행형 알림) 세션 내내 유지, 1정거장 전 강 진동
  */
 class TripService : Service() {
+
+    data class Leg(val line: String, val from: String, val to: String) {
+        val up get() = StaticData.legUp(line, from, to)
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val repo = MetroRepository()
 
-    private lateinit var trainNo: String
-    private lateinit var destStation: String
-    private lateinit var line: String
-    private var upLine: Boolean = true
+    private var legs: List<Leg> = emptyList()
+    private var legIdx = 0
+    private var trainNo: String? = null
     private var boarding: BoardingPosition? = null
     private var alerted = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        trainNo = intent?.getStringExtra(EXTRA_TRAIN) ?: return START_NOT_STICKY.also { stopSelf() }
-        destStation = intent.getStringExtra(EXTRA_DEST) ?: "홍대입구"
-        line = intent.getStringExtra(EXTRA_LINE) ?: "2호선"
-        upLine = intent.getBooleanExtra(EXTRA_UP, true)
+        val raw = intent?.getStringExtra(EXTRA_LEGS) ?: return START_NOT_STICKY.also { stopSelf() }
+        legs = raw.split(";").mapNotNull {
+            it.split("|").takeIf { p -> p.size == 3 }?.let { p -> Leg(p[0], p[1], p[2]) }
+        }
+        if (legs.isEmpty()) return START_NOT_STICKY.also { stopSelf() }
+        trainNo = intent.getStringExtra(EXTRA_TRAIN)   // 알면 사용, 없으면 자동 특정
         boarding = intent.getIntExtra(EXTRA_CAR, -1).takeIf { it > 0 }
             ?.let { BoardingPosition(it, intent.getIntExtra(EXTRA_DOOR, 2)) }
+        legIdx = 0; alerted = false
 
         createChannels()
-        startForeground(NOTI_ID, ongoingNotification(next = "…", left = -1))
-        scope.launch { track() }
+        startForeground(NOTI_ID, ongoingNotification("위치 확인 중…", -1))
+        scope.launch { runTrip() }
         return START_STICKY
     }
 
-    /** 열차번호 기반 실시간 추적 (20초 주기) */
-    private suspend fun track() {
-        val index = StaticData.indexOf(line)
-        val seg = StaticData.segmentOf(line)
-        val destIdx = index[destStation] ?: return
-        val forward = StaticData.movesForward(line, upLine)
-        repo.liveTrains(line, baseStation = destStation, upLine = upLine, pollMs = 20_000)
-            .collect { trains ->
-                val me = trains.firstOrNull { it.trainNo == trainNo } ?: return@collect
+    private suspend fun runTrip() {
+        var adoptAfter = 0L                       // 환승 도보 시간만큼 탑승열차 특정 유예
+        while (legIdx < legs.size) {
+            val leg = legs[legIdx]
+            val index = StaticData.indexOf(leg.line)
+            val seg = StaticData.segmentOf(leg.line)
+            val destIdx = index[leg.to] ?: break
+            val fromIdx = index[leg.from] ?: break
+            val forward = destIdx > fromIdx
+
+            val trains = repo.trainsOnce(leg.line, baseStation = leg.to, upLine = leg.up)
+            val now = System.currentTimeMillis()
+
+            // 탑승 열차 특정: 출발역 직전(진행 방향 기준)에서 접근 중인 열차
+            if (trainNo == null && now >= adoptAfter && trains.isNotEmpty()) {
+                trainNo = trains
+                    .filter { if (forward) it.position <= fromIdx + 0.05f else it.position >= fromIdx - 0.05f }
+                    .let { list ->
+                        if (forward) list.maxByOrNull { it.position } else list.minByOrNull { it.position }
+                    }?.trainNo
+            }
+
+            val me: Train? = trains.firstOrNull { it.trainNo == trainNo }
+            if (me != null) {
                 val curIdx = me.position.toInt()
                 val left = if (forward) destIdx - curIdx else curIdx - destIdx
-                val next = seg.getOrNull(if (forward) curIdx + 1 else curIdx - 1)?.name ?: destStation
-
+                val next = seg.getOrNull(if (forward) curIdx + 1 else curIdx - 1)?.name ?: leg.to
                 when {
-                    left <= 0 -> { notifyArrived(); stopSession() }
-                    left == 1 && !alerted -> { alerted = true; alertOneStopBefore(me.etaSeconds) }
-                    left == 1 -> updateNotification(alertNotification(me.etaSeconds)) // 유지·갱신
-                    else -> updateNotification(ongoingNotification(next, left))
+                    left <= 0 -> {                               // 구간 도착
+                        if (legIdx == legs.lastIndex) { notifyArrived(leg); stopSession(); return }
+                        val nextLeg = legs[legIdx + 1]
+                        notifyTransfer(leg, nextLeg)
+                        legIdx++; trainNo = null; alerted = false
+                        adoptAfter = System.currentTimeMillis() + 240_000  // 환승 도보 4분
+                    }
+                    left == 1 && !alerted -> { alerted = true; vibrate(); updateNotification(alertNotification(leg, me.etaSeconds)) }
+                    left == 1 -> updateNotification(alertNotification(leg, me.etaSeconds))
+                    else -> updateNotification(
+                        ongoingNotification("${leg.line} · 다음역 $next · ${leg.to}까지 ${left}개 역", left)
+                    )
                 }
+            } else {
+                updateNotification(ongoingNotification(
+                    if (now < adoptAfter) "${leg.line}으로 환승 중 · 탑승하면 자동 추적됩니다"
+                    else "${leg.line} 열차 위치 확인 중…", -1))
             }
+            delay(20_000)
+        }
+        stopSession()
     }
 
     /* ---------- 알림 ---------- */
 
-    private fun ongoingNotification(next: String, left: Int): Notification =
-        base(CH_CHIP)
-            .setContentTitle("$line 탑승 중")
-            .setContentText(
-                if (left < 0) "위치 확인 중…"
-                else "다음역 $next · ${destStation}까지 ${left}개 역"
-            )
-            .setProgress(StaticData.segmentOf(line).size, (StaticData.segmentOf(line).size - left).coerceAtLeast(0), left < 0)
-            .setOngoing(true)
-            .setSilent(true)
+    private fun ongoingNotification(text: String, left: Int): Notification {
+        val total = StaticData.segmentOf(legs.getOrNull(legIdx)?.line ?: "1호선").size
+        return base(CH_CHIP)
+            .setContentTitle("경로 안내 중 (${legIdx + 1}/${legs.size} 구간)")
+            .setContentText(text)
+            .setProgress(total, (total - left).coerceIn(0, total), left < 0)
+            .setOngoing(true).setSilent(true)
             .build()
+    }
 
-    /** 1정거장 전 — 문 방향 + 계단 방향(탑승 위치 기반) */
-    private fun alertNotification(etaSec: Int): Notification {
-        val g = StaticData.exitGuide(destStation, upLine = upLine, boarding = boarding)
+    private fun alertNotification(leg: Leg, etaSec: Int): Notification {
+        val isFinal = legIdx == legs.lastIndex
+        val g = StaticData.exitGuide(leg.to, upLine = leg.up, boarding = boarding)
         val eta = if (etaSec > 0) "약 %d:%02d 후".format(etaSec / 60, etaSec % 60) else "곧"
+        val body = buildString {
+            append("${leg.to} · $eta 도착\n")
+            append("내리는 문 : ${g.doorSide.label} ${g.doorSide.arrow}\n")
+            if (isFinal) {
+                append("계단 방향 : 내려서 ${g.stairSide.label} ${g.stairSide.arrow} (${g.stairDistanceM}m) · ${g.exitNo}")
+            } else {
+                val nl = legs[legIdx + 1]
+                append("${nl.line} 환승 준비")
+                StaticData.transferTip(leg.to, leg.line, nl.line)?.let {
+                    append(" · 빠른 환승 ${it.car}칸"); it.platform?.let { pf -> append(" · $pf") }
+                }
+            }
+        }
         return base(CH_ALERT)
-            .setContentTitle("다음 역에서 내리세요! — 1정거장 전")
-            .setContentText("$destStation · $eta 도착")
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "$destStation · $eta 도착\n" +
-                    "내리는 문 : ${g.doorSide.label} ${g.doorSide.arrow}\n" +
-                    "계단 방향 : 내려서 ${g.stairSide.label} ${g.stairSide.arrow} (${g.stairDistanceM}m) · ${g.exitNo}" +
-                    (boarding?.let { "\n내 탑승 위치 $it 기준" } ?: "\n탑승 위치 미입력 · 역 중앙 기준")
-                )
-            )
-            .setOngoing(true)          // 알림 후에도 하차까지 유지 (C1)
-            .setColor(0xFFFF3B30.toInt())
-            .setColorized(true)
+            .setContentTitle(if (isFinal) "다음 역에서 내리세요! — 1정거장 전" else "다음 역에서 환승! — 1정거장 전")
+            .setContentText("${leg.to} · $eta 도착")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setOngoing(true).setColor(0xFFFF3B30.toInt()).setColorized(true)
             .build()
     }
 
-    private fun alertOneStopBefore(etaSec: Int) {
-        vibrate()
-        updateNotification(alertNotification(etaSec))
+    private fun notifyTransfer(leg: Leg, nextLeg: Leg) {
+        vibrate(short = true)
+        val tip = StaticData.transferTip(leg.to, leg.line, nextLeg.line)
+        val n = base(CH_ALERT)
+            .setContentTitle("${leg.to} 도착 · ${nextLeg.line} 환승")
+            .setContentText(buildString {
+                append("${nextLeg.to} 방면으로 갈아타세요")
+                tip?.let { append(" · 빠른 환승 ${it.car}칸") }
+            })
+            .setAutoCancel(true)
+            .build()
+        nm().notify(NOTI_ID + 1, n)
     }
 
-    private fun notifyArrived() {
+    private fun notifyArrived(leg: Leg) {
         vibrate(short = true)
         val n = base(CH_ALERT)
-            .setContentTitle("$destStation 도착")
-            .setContentText("안전하게 내리세요. 세션을 종료합니다.")
+            .setContentTitle("${leg.to} 도착")
+            .setContentText("안전하게 내리세요. 안내를 종료합니다.")
             .setAutoCancel(true)
             .build()
         nm().notify(NOTI_ID + 1, n)
@@ -126,8 +174,8 @@ class TripService : Service() {
         )
         return NotificationCompat.Builder(this, channel)
             .setSmallIcon(android.R.drawable.stat_notify_more)
-            .setContentIntent(pi)                                  // 칩/알림 탭 → 중앙 카드
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)   // 잠금화면 칩 (C2)
+            .setContentIntent(pi)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
     }
 
@@ -140,14 +188,11 @@ class TripService : Service() {
     }
 
     private fun createChannels() {
-        val nm = nm()
-        nm.createNotificationChannel(
-            NotificationChannel(CH_CHIP, "탑승 진행", NotificationManager.IMPORTANCE_LOW)
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CH_ALERT, "하차 알림", NotificationManager.IMPORTANCE_HIGH)
-                .apply { enableVibration(true) }
-        )
+        nm().createNotificationChannel(
+            NotificationChannel(CH_CHIP, "경로 안내", NotificationManager.IMPORTANCE_LOW))
+        nm().createNotificationChannel(
+            NotificationChannel(CH_ALERT, "하차·환승 알림", NotificationManager.IMPORTANCE_HIGH)
+                .apply { enableVibration(true) })
     }
 
     private fun stopSession() {
@@ -163,17 +208,23 @@ class TripService : Service() {
         private const val NOTI_ID = 1001
         private const val CH_CHIP = "trip_chip"
         private const val CH_ALERT = "trip_alert"
-        const val EXTRA_TRAIN = "train"; const val EXTRA_DEST = "dest"
-        const val EXTRA_LINE = "line"; const val EXTRA_UP = "up"
+        const val EXTRA_LEGS = "legs"; const val EXTRA_TRAIN = "train"
         const val EXTRA_CAR = "car"; const val EXTRA_DOOR = "door"
 
-        fun start(
-            ctx: Context, trainNo: String, dest: String,
-            line: String, upLine: Boolean, boarding: BoardingPosition?,
-        ) {
+        /** 실시간 탭 단일 구간 탑승 */
+        fun start(ctx: Context, trainNo: String, dest: String, line: String, upLine: Boolean, boarding: BoardingPosition?) {
+            // upLine은 legUp으로 재계산되므로 from만 정확하면 됨: 열차 현재 위치를 몰라 from은 dest 기준 계산 불가 →
+            // 단일 구간은 from을 노선 반대편 끝으로 두어 방향만 맞춤
+            val seg = StaticData.segmentOf(line)
+            val from = if (StaticData.movesForward(line, upLine)) seg.first().name else seg.last().name
+            startLegs(ctx, listOf(Leg(line, from, dest)), trainNo, boarding)
+        }
+
+        /** 경로 안내 (다구간) */
+        fun startLegs(ctx: Context, legs: List<Leg>, trainNo: String?, boarding: BoardingPosition?) {
             val i = Intent(ctx, TripService::class.java)
-                .putExtra(EXTRA_TRAIN, trainNo).putExtra(EXTRA_DEST, dest)
-                .putExtra(EXTRA_LINE, line).putExtra(EXTRA_UP, upLine)
+                .putExtra(EXTRA_LEGS, legs.joinToString(";") { "${it.line}|${it.from}|${it.to}" })
+                .putExtra(EXTRA_TRAIN, trainNo)
                 .putExtra(EXTRA_CAR, boarding?.car ?: -1)
                 .putExtra(EXTRA_DOOR, boarding?.door ?: 2)
             if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)

@@ -1,11 +1,11 @@
 package com.metrolive.ui.live
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -212,39 +212,59 @@ private fun TrainMap(
     val canonical = StaticData.segmentOf(line)
     val stations = if (forward) canonical else canonical.reversed()
     val lastIdx = (canonical.size - 1).coerceAtLeast(0).toFloat()
-    Box(modifier.verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 220.dp)) {
-        Box(
-            Modifier.padding(start = TrackX).width(6.dp)
-                .height(StationGap * (stations.size - 1).coerceAtLeast(1) + 24.dp)
-                .clip(RoundedCornerShape(3.dp)).background(lineColor)
-        )
-        stations.forEachIndexed { i, s ->
-            Row(
-                Modifier.offset(y = StationGap * i).padding(start = TrackX - 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+
+    // 표시 인덱스 기준으로 열차를 역 구간별 그룹핑
+    val byItem: Map<Int, List<Pair<Train, Float>>> = trains
+        .map { t ->
+            val dp = if (forward) t.position else lastIdx - t.position
+            t to dp
+        }
+        .groupBy({ it.second.toInt().coerceIn(0, stations.lastIndex) }) { (t, dp) ->
+            t to (dp - dp.toInt())
+        }
+
+    // 전체 영역 어디서든 스크롤되는 표준 리스트
+    LazyColumn(
+        modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 220.dp),
+    ) {
+        itemsIndexed(stations, key = { _, s2 -> s2.name }) { i, stn ->
+            Box(Modifier.fillMaxWidth().height(StationGap)) {
+                // 노선 트랙
                 Box(
-                    Modifier.size(if (s.isTransfer) 20.dp else 18.dp)
-                        .clip(CircleShape).background(IosCard)
-                        .border(4.dp, if (s.isTransfer) IosLabel else lineColor, CircleShape)
+                    Modifier.padding(start = TrackX)
+                        .width(6.dp)
+                        .fillMaxHeight()
+                        .background(lineColor)
                 )
-                Spacer(Modifier.width(14.dp))
-                Column {
-                    Text(s.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    s.transferInfo?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+                // 역 마커 + 이름
+                Row(
+                    Modifier.align(Alignment.TopStart).padding(start = TrackX - 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier.size(if (stn.isTransfer) 20.dp else 18.dp)
+                            .clip(CircleShape).background(IosCard)
+                            .border(4.dp, if (stn.isTransfer) IosLabel else lineColor, CircleShape)
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Column {
+                        Text(stn.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        stn.transferInfo?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+                    }
+                }
+                // 이 구간의 열차 카드
+                byItem[i]?.forEach { (t, frac) ->
+                    TrainCard(
+                        train = t, lineColor = lineColor, baseStation = baseStation,
+                        selected = t.trainNo == selectedNo,
+                        onTap = { onTrainTap(t.trainNo) },
+                        modifier = Modifier.align(Alignment.TopEnd)
+                            .offset(y = StationGap * frac)
+                            .padding(start = 118.dp, end = 16.dp),
+                    )
                 }
             }
-        }
-        trains.forEach { t ->
-            val displayPos = if (forward) t.position else lastIdx - t.position
-            val y by animateFloatAsState(displayPos, tween(1200), label = "trainY")
-            TrainCard(
-                train = t, lineColor = lineColor, baseStation = baseStation,
-                selected = t.trainNo == selectedNo,
-                onTap = { onTrainTap(t.trainNo) },
-                modifier = Modifier.offset(y = StationGap * y)
-                    .padding(start = 118.dp, end = 16.dp).fillMaxWidth(),
-            )
         }
     }
 }
@@ -255,7 +275,7 @@ private fun TrainCard(
     selected: Boolean, onTap: () -> Unit, modifier: Modifier,
 ) {
     Row(
-        modifier.clip(RoundedCornerShape(16.dp)).background(GlassWhite)
+        modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(GlassWhite)
             .border(
                 if (selected) 1.5.dp else 0.5.dp,
                 if (selected) IosBlue else Color.White.copy(alpha = .7f),

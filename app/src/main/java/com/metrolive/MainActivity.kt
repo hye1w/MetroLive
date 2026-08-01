@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.metrolive.data.StaticData
 import com.metrolive.trip.TripService
+import com.metrolive.data.Network
 import com.metrolive.ui.home.HomeScreen
 import com.metrolive.ui.live.LiveMapScreen
 import com.metrolive.ui.live.LiveMapViewModel
@@ -92,7 +93,26 @@ class MainActivity : ComponentActivity() {
 
                     // 경로 결과 (전체 화면 오버레이)
                     route?.let { (f, t) ->
-                        RouteScreen(from = f, to = t, onBack = { route = null })
+                        RouteScreen(
+                            from = f, to = t, onBack = { route = null },
+                            onStartGuidance = { legs ->
+                                TripService.startLegs(
+                                    this@MainActivity,
+                                    legs.map { TripService.Leg(it.line, it.from, it.to) },
+                                    trainNo = null, boarding = st.boarding,
+                                )
+                                // 첫 구간 노선·방향으로 실시간 화면 전환
+                                legs.firstOrNull()?.let { first ->
+                                    vm.setLineDirection(
+                                        first.line,
+                                        StaticData.legUp(first.line, first.from, first.to),
+                                    )
+                                }
+                                route = null
+                                tab = 1
+                                tripCardVisible = true
+                            },
+                        )
                     }
 
                     // 칩/알림 탭 시 중앙 확장 카드

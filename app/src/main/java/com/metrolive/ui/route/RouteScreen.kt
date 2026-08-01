@@ -26,7 +26,10 @@ import com.metrolive.data.StaticData
 import com.metrolive.ui.theme.*
 
 @Composable
-fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
+fun RouteScreen(
+    from: String, to: String, onBack: () -> Unit,
+    onStartGuidance: (List<Network.Leg>) -> Unit = {},
+) {
     var vias by remember { mutableStateOf(listOf<String>()) }
     var viaPicker by remember { mutableStateOf(false) }
     val variants = remember(from, to, vias) { Network.findRoutesVia(from, vias, to) }
@@ -74,23 +77,31 @@ fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
             return@Column
         }
 
-        // 탭 (최적 / 최단시간 / 최소환승 — 동일 경로는 병합 라벨)
-        Row(
-            Modifier.padding(horizontal = 20.dp).fillMaxWidth()
-                .clip(RoundedCornerShape(11.dp)).background(Color(0x1F767680)).padding(2.dp),
-        ) {
-            variants.forEachIndexed { i, v ->
+        // 기본: 최적 경로. 다른 경로가 있으면 접힌 목록으로 제공
+        var showAlts by remember { mutableStateOf(false) }
+        if (variants.size > 1) {
+            Column(Modifier.padding(horizontal = 20.dp)) {
                 Text(
-                    v.label, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    color = if (tab == i) IosLabel else IosSecondary,
-                    modifier = Modifier.weight(1f)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(if (tab == i) Color.White else Color.Transparent)
-                        .clickable { tab = i }
-                        .padding(vertical = 8.dp),
-                    maxLines = 1,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    if (showAlts) "다른 경로 접기 ▲" else "다른 경로 보기 (${variants.size - 1}) ▼",
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IosBlue,
+                    modifier = Modifier.clickable { showAlts = !showAlts }.padding(vertical = 6.dp),
                 )
+                if (showAlts) variants.forEachIndexed { i, alt ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (tab == i) IosBlue.copy(alpha = .1f) else IosCard)
+                            .border(0.5.dp, if (tab == i) IosBlue else IosSeparator, RoundedCornerShape(12.dp))
+                            .clickable { tab = i; showAlts = false }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(alt.label, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f))
+                        Text("${alt.totalMin}분 · 환승 ${alt.transfers}회",
+                            fontSize = 12.sp, color = IosSecondary)
+                    }
+                }
             }
         }
 
@@ -195,6 +206,14 @@ fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
                 "시간·요금은 근사값입니다. 실시간 도착은 출발역 카드 참고.",
                 style = MaterialTheme.typography.labelSmall,
             )
+            Spacer(Modifier.height(16.dp))
+            // 이 경로로 안내 시작 → 구간별 실시간 추적 + 환승/하차 알림
+            Button(
+                onClick = { onStartGuidance(v.legs) },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+            ) { Text("이 경로로 하차 알림 시작", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+            Spacer(Modifier.height(30.dp))
         }
 
         if (viaPicker) {
