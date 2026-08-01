@@ -190,6 +190,7 @@ fun RouteScreen(
                     val fromIdx = idxMap[curLeg.from] ?: 0
                     var selTrainNo by remember(v, selLeg) { mutableStateOf<String?>(null) }
                     val recNo = legTrains
+                        .filter { StaticData.coversLeg(curLeg.line, it.destination, curLeg.from, curLeg.to) }
                         .filter { if (fwd) it.position <= fromIdx + 0.05f else it.position >= fromIdx - 0.05f }
                         .let { l -> if (fwd) l.maxByOrNull { it.position } else l.minByOrNull { it.position } }
                         ?.trainNo
@@ -212,6 +213,8 @@ fun RouteScreen(
                                 // 열차 카드 영역 (추천 열차는 파란 강조 + ETA)
                                 Box(Modifier.height(64.dp), contentAlignment = Alignment.BottomCenter) {
                                     trainsHere.firstOrNull()?.let { t ->
+                                        val covers = StaticData.coversLeg(
+                                            curLeg.line, t.destination, curLeg.from, curLeg.to)
                                         val isSel = chosenNo != null &&
                                             com.metrolive.data.normalizeTrainNo(t.trainNo) ==
                                             com.metrolive.data.normalizeTrainNo(chosenNo)
@@ -226,7 +229,10 @@ fun RouteScreen(
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                         ) {
                                             Text(t.destination, fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold, color = legColor, maxLines = 1)
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (covers) legColor else IosSecondary,
+                                                maxLines = 1)
+                                            if (!covers) Text("중도 종착", fontSize = 8.sp, color = IosSecondary)
                                             Text(
                                                 if (t.etaSeconds >= 0)
                                                     "%d:%02d".format(t.etaSeconds / 60, t.etaSeconds % 60)
@@ -287,6 +293,7 @@ fun RouteScreen(
                         fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IosSecondary)
                     Spacer(Modifier.height(6.dp))
                     arrivals.forEachIndexed { ai, a ->
+                        val aCovers = StaticData.coversLeg(firstLeg.line, a.destination, from, firstLeg.to)
                         val rowSel = startTrainNoHolder.value?.let {
                             com.metrolive.data.normalizeTrainNo(it) == a.trainNo } ?: (ai == 0)
                         Row(Modifier
@@ -295,7 +302,7 @@ fun RouteScreen(
                                 .clickable { startTrainNoHolder.value = a.trainNo }
                                 .padding(vertical = 4.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Text(a.destination + "행", fontSize = 14.sp,
+                            Text(a.destination + "행" + if (aCovers) "" else " (중도 종착)", fontSize = 14.sp,
                                 color = if (rowSel) IosBlue else IosLabel,
                                 fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.width(8.dp))

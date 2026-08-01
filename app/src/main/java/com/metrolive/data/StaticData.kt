@@ -83,6 +83,20 @@ object StaticData {
         return if (wrap.size - 1 == expectedStops) wrap else linear
     }
 
+    /**
+     * 열차가 구간(from→to)을 끝까지 운행하는지 판정.
+     * 종착역이 목적지보다 앞이면 false (예: 구디→교대 구간에 신도림행).
+     * 종착역이 노선 목록에 없으면(인천·병점 등 연장 구간) 통과로 간주.
+     */
+    fun coversLeg(line: String, destLabel: String, from: String, to: String): Boolean {
+        val idx = indexOf(line)
+        val destName = destLabel.removeSuffix("행").removeSuffix("종착")
+        val d = idx[destName] ?: return true
+        val a = idx[from] ?: return true
+        val b = idx[to] ?: return true
+        return if (b > a) d >= b else d <= b
+    }
+
     /** from→to 이동에 필요한 상/하행(2호선은 내선/외선) 판정 */
     fun legUp(line: String, from: String, to: String): Boolean {
         val idx = indexOf(line)

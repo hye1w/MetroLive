@@ -97,6 +97,7 @@ class TripService : Service() {
             // 탑승 열차 특정: 출발역 직전(진행 방향 기준)에서 접근 중인 열차
             if (trainNo == null && now >= adoptAfter && trains.isNotEmpty()) {
                 trainNo = trains
+                    .filter { StaticData.coversLeg(leg.line, it.destination, leg.from, leg.to) }
                     .filter { if (forward) it.position <= fromIdx + 0.05f else it.position >= fromIdx - 0.05f }
                     .let { list ->
                         if (forward) list.maxByOrNull { it.position } else list.minByOrNull { it.position }
