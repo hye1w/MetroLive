@@ -14,6 +14,19 @@ import com.metrolive.data.MetroRepository
 import com.metrolive.data.StaticData
 import com.metrolive.data.Train
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+/** 서비스 → UI 상태 공유 (알림 탭으로 앱 열었을 때 표시) */
+object TripState {
+    data class Info(
+        val line: String, val next: String, val dest: String,
+        val left: Int, val legIdx: Int, val legsCount: Int, val alerting: Boolean,
+    )
+    private val _info = MutableStateFlow<Info?>(null)
+    val info: StateFlow<Info?> = _info
+    internal fun set(i: Info?) { _info.value = i }
+}
 
 /**
  * 다구간 탑승 세션 (환승 포함 경로 안내)
@@ -38,6 +51,7 @@ class TripService : Service() {
     private var alerted = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) { stopSession(); return START_NOT_STICKY }
         val raw = intent?.getStringExtra(EXTRA_LEGS) ?: return START_NOT_STICKY.also { stopSelf() }
         legs = raw.split(";").mapNotNull {
             it.split("|").takeIf { p -> p.size == 3 }?.let { p -> Leg(p[0], p[1], p[2]) }
@@ -92,7 +106,7 @@ class TripService : Service() {
                     left == 1 && !alerted -> { alerted = true; vibrate(); updateNotification(alertNotification(leg, me.etaSeconds)) }
                     left == 1 -> updateNotification(alertNotification(leg, me.etaSeconds))
                     else -> updateNotification(
-                        ongoingNotification("${leg.line} · 다음역 $next · ${leg.to}까지 ${left}개 역", left)
+                        ongoingNotification("${leg.line} · ${leg.from} → ${leg.to}", left, next)
                     )
                 }
             } else {
@@ -107,12 +121,17 @@ class TripService : Service() {
 
     /* ---------- 알림 ---------- */
 
-    private fun ongoingNotification(text: String, left: Int): Notification {
-        val total = StaticData.segmentOf(legs.getOrNull(legIdx)?.line ?: "1호선").size
+    private fun ongoingNotification(text: String, left: Int, next: String = "…"): Notification {
+        val leg = legs.getOrNull(legIdx)
+        TripState.set(TripState.Info(
+            leg?.line ?: "", next, leg?.to ?: "", left, legIdx, legs.size, alerting = false))
+        val title = if (left > 0) "다음역 $next · ${leg?.to}까지 ${left}정거장"
+                    else "경로 안내 중 (${legIdx + 1}/${legs.size} 구간)"
         return base(CH_CHIP)
-            .setContentTitle("경로 안내 중 (${legIdx + 1}/${legs.size} 구간)")
+            .setContentTitle(title)
             .setContentText(text)
-            .setProgress(total, (total - left).coerceIn(0, total), left < 0)
+            .setSubText("${leg?.line ?: ""} ${legIdx + 1}/${legs.size}")
+            .setShowWhen(false)
             .setOngoing(true).setSilent(true)
             .build()
     }
@@ -138,8 +157,12 @@ class TripService : Service() {
             .setContentTitle(if (isFinal) "다음 역에서 내리세요! — 1정거장 전" else "다음 역에서 환승! — 1정거장 전")
             .setContentText("${leg.to} · $eta 도착")
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setOngoing(true).setColor(0xFFFF3B30.toInt()).setColorized(true)
+            .setOngoing(true).setColor(0xFF0A84FF.toInt())
             .build()
+            .also {
+                TripState.set(TripState.Info(
+                    leg.line, leg.to, legs.last().to, 1, legIdx, legs.size, alerting = true))
+            }
     }
 
     private fun notifyTransfer(leg: Leg, nextLeg: Leg) {
@@ -172,8 +195,14 @@ class TripService : Service() {
             Intent(this, MainActivity::class.java).putExtra("expand_trip_card", true),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val stopPi = PendingIntent.getService(
+            this, 1,
+            Intent(this, TripService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         return NotificationCompat.Builder(this, channel)
-            .setSmallIcon(android.R.drawable.stat_notify_more)
+            .setSmallIcon(com.metrolive.R.drawable.ic_stat_train)
+            .addAction(0, "안내 종료", stopPi)
             .setContentIntent(pi)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
@@ -196,7 +225,10 @@ class TripService : Service() {
     }
 
     private fun stopSession() {
+        TripState.set(null)
+        scope.coroutineContext.cancelChildren()
         stopForeground(STOP_FOREGROUND_REMOVE)
+        nm().cancel(NOTI_ID + 1)
         stopSelf()
     }
 
@@ -208,7 +240,12 @@ class TripService : Service() {
         private const val NOTI_ID = 1001
         private const val CH_CHIP = "trip_chip"
         private const val CH_ALERT = "trip_alert"
+        const val ACTION_STOP = "com.metrolive.STOP_TRIP"
         const val EXTRA_LEGS = "legs"; const val EXTRA_TRAIN = "train"
+
+        fun stop(ctx: Context) {
+            ctx.startService(Intent(ctx, TripService::class.java).setAction(ACTION_STOP))
+        }
         const val EXTRA_CAR = "car"; const val EXTRA_DOOR = "door"
 
         /** 실시간 탭 단일 구간 탑승 */

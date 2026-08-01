@@ -21,6 +21,10 @@ import androidx.compose.ui.platform.LocalContext
 import com.metrolive.data.FavoritesStore
 import com.metrolive.data.MetroRepository
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.metrolive.data.normalizeTrainNo
 import com.metrolive.data.Network
 import com.metrolive.data.Train
 import com.metrolive.ui.home.StationPickerSheet
@@ -117,7 +121,7 @@ fun RouteScreen(
             val leg = v.legs.getOrNull(selLeg) ?: return@LaunchedEffect
             val up = StaticData.legUp(leg.line, leg.from, leg.to)
             while (true) {
-                legTrains = MetroRepository().trainsOnce(leg.line, leg.to, up)
+                legTrains = MetroRepository().trainsOnce(leg.line, leg.from, up)
                 kotlinx.coroutines.delay(15_000)
             }
         }
@@ -175,12 +179,25 @@ fun RouteScreen(
                     }
                     Spacer(Modifier.height(10.dp))
 
-                    // 가로 실시간 스트립
+                    // 가로 실시간 스트립 — 전체 노선 표시 (다음/이전 열차 선택 가능하도록)
                     val legColor = Color(Network.lineColors[curLeg.line] ?: 0xFF8E8E93)
-                    val slice = StaticData.stationsBetween(curLeg.line, curLeg.from, curLeg.to, curLeg.stops)
                     val canonical = StaticData.segmentOf(curLeg.line)
-                    Row(Modifier.horizontalScroll(rememberScrollState())) {
-                        slice.forEachIndexed { si, name ->
+                    val idxMap = StaticData.indexOf(curLeg.line)
+                    val fwd = (idxMap[curLeg.to] ?: 0) > (idxMap[curLeg.from] ?: 0)
+                    val slice = canonical.map { it.name }.let { if (fwd) it else it.reversed() }
+                    // 추천 열차: 출발역 직전에서 접근 중인 열차
+                    val fromIdx = idxMap[curLeg.from] ?: 0
+                    val recNo = legTrains
+                        .filter { if (fwd) it.position <= fromIdx + 0.05f else it.position >= fromIdx - 0.05f }
+                        .let { l -> if (fwd) l.maxByOrNull { it.position } else l.minByOrNull { it.position } }
+                        ?.trainNo
+                    val listState = rememberLazyListState()
+                    LaunchedEffect(curLeg, slice.size) {   // 출발역 근처로 초기 스크롤
+                        val target = (slice.indexOf(curLeg.from) - 1).coerceAtLeast(0)
+                        listState.scrollToItem(target)
+                    }
+                    LazyRow(state = listState) {
+                        itemsIndexed(slice) { si, name ->
                             val trainsHere = legTrains.filter { t ->
                                 canonical.getOrNull(t.position.toInt() + if (t.position % 1 > 0.5f) 1 else 0)
                                     ?.name == name || canonical.getOrNull(t.position.toInt())?.name == name
@@ -189,19 +206,31 @@ fun RouteScreen(
                                 Modifier.width(78.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                // 열차 카드 영역
-                                Box(Modifier.height(58.dp), contentAlignment = Alignment.BottomCenter) {
+                                // 열차 카드 영역 (추천 열차는 파란 강조 + ETA)
+                                Box(Modifier.height(64.dp), contentAlignment = Alignment.BottomCenter) {
                                     trainsHere.firstOrNull()?.let { t ->
+                                        val isRec = t.trainNo == recNo
                                         Column(
                                             Modifier.clip(RoundedCornerShape(10.dp))
-                                                .background(IosCard)
-                                                .border(1.5.dp, legColor, RoundedCornerShape(10.dp))
+                                                .background(if (isRec) IosBlue.copy(alpha = .1f) else IosCard)
+                                                .border(if (isRec) 2.dp else 1.5.dp,
+                                                    if (isRec) IosBlue else legColor,
+                                                    RoundedCornerShape(10.dp))
                                                 .padding(horizontal = 7.dp, vertical = 4.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                         ) {
+                                            if (isRec) Text("추천", fontSize = 8.sp,
+                                                fontWeight = FontWeight.Black, color = IosBlue)
                                             Text(t.destination, fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold, color = legColor, maxLines = 1)
-                                            Text(t.trainNo, fontSize = 9.sp, color = IosSecondary)
+                                            Text(
+                                                if (t.etaSeconds >= 0)
+                                                    "%d:%02d".format(t.etaSeconds / 60, t.etaSeconds % 60)
+                                                else t.trainNo,
+                                                fontSize = 9.sp,
+                                                color = if (isRec) IosBlue else IosSecondary,
+                                                fontWeight = if (isRec) FontWeight.Bold else FontWeight.Normal,
+                                            )
                                         }
                                     }
                                 }
@@ -217,9 +246,10 @@ fun RouteScreen(
                                             .border(2.5.dp, legColor, CircleShape)
                                     )
                                 }
+                                val isEnd = name == curLeg.from || name == curLeg.to
                                 Text(name, fontSize = 10.5.sp, maxLines = 2,
-                                    fontWeight = if (si == 0 || si == slice.lastIndex)
-                                        FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isEnd) legColor else IosLabel,
+                                    fontWeight = if (isEnd) FontWeight.ExtraBold else FontWeight.Medium,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                         }
@@ -249,9 +279,11 @@ fun RouteScreen(
                     Text("$from 실시간 도착 · ${firstLeg.line}",
                         fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IosSecondary)
                     Spacer(Modifier.height(6.dp))
-                    arrivals.forEach { a ->
+                    arrivals.forEachIndexed { ai, a ->
                         Row(Modifier.padding(vertical = 3.dp),
                             verticalAlignment = Alignment.CenterVertically) {
+                            if (ai == 0) Text("추천 ", fontSize = 12.sp,
+                                fontWeight = FontWeight.Black, color = IosBlue)
                             Text(a.destination + "행", fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.width(8.dp))

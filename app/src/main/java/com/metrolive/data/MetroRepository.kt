@@ -35,14 +35,19 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         val index = StaticData.indexOf(lineName)
         val sign = if (StaticData.movesForward(lineName, upLine)) 1 else -1
         while (true) {
-            runCatching {
-                val pos = api.realtimePosition(lineName = lineName).list
-                val arr = api.realtimeArrival(stationName = baseStation).list
-                lastError = if (pos.isEmpty()) "응답에 열차 데이터 없음 (키 한도/미제공 시간대 가능)" else null
-                emit(merge(pos, arr, index, upLine, sign))
-            }.onFailure { e ->
-                lastError = e.message?.take(120) ?: e.javaClass.simpleName
-                emit(emptyList())
+            var done = false
+            repeat(2) { attempt ->                       // DNS 일시 실패 등 1회 즉시 재시도
+                if (done) return@repeat
+                runCatching {
+                    val pos = api.realtimePosition(lineName = lineName).list
+                    val arr = api.realtimeArrival(stationName = baseStation).list
+                    lastError = if (pos.isEmpty()) "응답에 열차 데이터 없음" else null
+                    emit(merge(pos, arr, index, upLine, sign))
+                    done = true
+                }.onFailure { e ->
+                    lastError = "일시 오류 · 재시도 중 (${e.javaClass.simpleName})"
+                    if (attempt == 0) delay(1200)        // 기존 목록 유지한 채 재시도
+                }
             }
             delay(pollMs)
         }
@@ -56,7 +61,7 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         sign: Int,
     ): List<Train> {
         val wantUpDown = if (upLine) "0" else "1"
-        val etaByTrain = arrivals.associateBy({ it.trainNo }) {
+        val etaByTrain = arrivals.associateBy({ normalizeTrainNo(it.trainNo) }) {
             val raw = it.etaSeconds.toIntOrNull() ?: 0
             (raw - lagSeconds(it.receivedAt)).coerceAtLeast(0)
         }
@@ -75,7 +80,8 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
                     isExpress = row.express == "1",
                     position = (idx + sign * lagAdvance).coerceIn(0f, last),
                     isStopped = stopped,
-                    etaSeconds = etaByTrain[row.trainNo] ?: -1,
+                    etaSeconds = etaByTrain[normalizeTrainNo(row.trainNo)] ?: -1,
+                    curStation = row.stationName,
                 )
             }
             .sortedBy { it.position }

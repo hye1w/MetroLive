@@ -10,6 +10,10 @@ data class Station(
     val transferInfo: String? = null,
 )
 
+/** 열차번호 정규화: 접두 문자·선행 0 제거 ("K0698"→"698") */
+fun normalizeTrainNo(no: String): String =
+    no.filter { it.isDigit() }.trimStart('0').ifEmpty { "0" }
+
 /** 화면용 열차 상태 (실시간 API 가공 결과) */
 data class Train(
     val trainNo: String,
@@ -20,6 +24,8 @@ data class Train(
     val isStopped: Boolean,
     /** 기준역(내 역) 도착까지 남은 초 */
     val etaSeconds: Int,
+    /** 현재(부근) 역 이름 */
+    val curStation: String = "",
     val platform: String = "3번 플랫폼",
 )
 

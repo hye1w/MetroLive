@@ -189,6 +189,11 @@ private fun Header(
                 )
             }
         }
+        Text(
+            "열차 진행 방향: ${if (StaticData.movesForward(st.line, st.upLine)) "아래 ▼" else "위 ▲"} · ${StaticData.terminusOf(st.line, st.upLine)}",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        )
         st.apiError?.let { err ->
             Text(
                 "⚠ $err",
@@ -216,24 +221,19 @@ private fun TrainMap(
     onTrainTap: (String) -> Unit, modifier: Modifier,
 ) {
     val forward = StaticData.movesForward(line, upLine)
-    val canonical = StaticData.segmentOf(line)
-    val stations = if (forward) canonical else canonical.reversed()
-    val lastIdx = (canonical.size - 1).coerceAtLeast(0).toFloat()
+    val stations = StaticData.segmentOf(line)          // 지리 순서 고정 (위=목록 시작)
+    val arrow = if (forward) "▼" else "▲"              // 진행 방향 표시
 
-    // 표시 인덱스 기준으로 열차를 역 구간별 그룹핑
+    // 열차를 역 구간별 그룹핑 (canonical index 그대로)
     val byItem: Map<Int, List<Pair<Train, Float>>> = trains
-        .map { t ->
-            val dp = if (forward) t.position else lastIdx - t.position
-            t to dp
-        }
-        .groupBy({ it.second.toInt().coerceIn(0, stations.lastIndex) }) { (t, dp) ->
-            t to (dp - dp.toInt())
+        .groupBy({ it.position.toInt().coerceIn(0, stations.lastIndex) }) { t ->
+            t to (t.position - t.position.toInt())
         }
 
     // 전체 영역 어디서든 스크롤되는 표준 리스트
     LazyColumn(
         modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(top = 8.dp, bottom = 220.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 280.dp),
     ) {
         itemsIndexed(stations, key = { _, s2 -> s2.name }) { i, stn ->
             Box(Modifier.fillMaxWidth().height(StationGap)) {
@@ -260,16 +260,34 @@ private fun TrainMap(
                         stn.transferInfo?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
                     }
                 }
-                // 이 구간의 열차 카드
-                byItem[i]?.forEach { (t, frac) ->
-                    TrainCard(
-                        train = t, lineColor = lineColor, baseStation = baseStation,
-                        selected = t.trainNo == selectedNo,
-                        onTap = { onTrainTap(t.trainNo) },
-                        modifier = Modifier.align(Alignment.TopEnd)
-                            .offset(y = StationGap * frac)
-                            .padding(start = 118.dp, end = 16.dp),
-                    )
+                // 이 구간의 열차 카드 (여러 대면 세로 스택으로 겹침 방지)
+                byItem[i]?.let { group ->
+                    if (group.size == 1) {
+                        val (t, frac) = group[0]
+                        TrainCard(
+                            train = t, lineColor = lineColor, baseStation = baseStation,
+                            arrow = arrow, selected = t.trainNo == selectedNo,
+                            onTap = { onTrainTap(t.trainNo) },
+                            modifier = Modifier.align(Alignment.TopEnd)
+                                .offset(y = StationGap * frac.coerceAtMost(0.45f))
+                                .padding(start = 118.dp, end = 16.dp),
+                        )
+                    } else {
+                        Column(
+                            Modifier.align(Alignment.TopEnd)
+                                .padding(start = 118.dp, end = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            group.sortedBy { it.second }.forEach { (t, _) ->
+                                TrainCard(
+                                    train = t, lineColor = lineColor, baseStation = baseStation,
+                                    arrow = arrow, selected = t.trainNo == selectedNo,
+                                    onTap = { onTrainTap(t.trainNo) },
+                                    modifier = Modifier,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -279,7 +297,7 @@ private fun TrainMap(
 @Composable
 private fun TrainCard(
     train: Train, lineColor: Color, baseStation: String,
-    selected: Boolean, onTap: () -> Unit, modifier: Modifier,
+    arrow: String, selected: Boolean, onTap: () -> Unit, modifier: Modifier,
 ) {
     Row(
         modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(GlassWhite)
@@ -293,7 +311,12 @@ private fun TrainCard(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(lineColor),
-            contentAlignment = Alignment.Center) { Text("🚇", fontSize = 16.sp) }
+            contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("🚇", fontSize = 13.sp)
+                Text(arrow, fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Black)
+            }
+        }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -305,13 +328,15 @@ private fun TrainCard(
                             .padding(horizontal = 5.dp, vertical = 1.dp))
                 }
             }
-            Text("열차 ${train.trainNo} · ${if (train.isStopped) "정차" else "주행 중"}",
+            Text("${train.curStation} ${if (train.isStopped) "정차" else "출발"} · ${train.trainNo}",
                 style = MaterialTheme.typography.labelSmall)
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(train.etaSeconds.mmss(), color = IosBlue,
-                fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-            Text("$baseStation 도착", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
+        if (train.etaSeconds >= 0) {
+            Column(horizontalAlignment = Alignment.End) {
+                Text(train.etaSeconds.mmss(), color = IosBlue,
+                    fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                Text("$baseStation 도착", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
+            }
         }
     }
 }
@@ -322,11 +347,11 @@ private fun BottomBoardCard(
     onCongestion: () -> Unit, onBoard: () -> Unit, modifier: Modifier,
 ) {
     Column(
-        modifier.padding(14.dp).padding(bottom = 62.dp)
+        modifier.padding(horizontal = 14.dp).padding(bottom = 84.dp)
             .navigationBarsPadding()
             .clip(RoundedCornerShape(22.dp)).background(GlassWhite)
             .border(1.dp, Color.White.copy(alpha = .8f), RoundedCornerShape(22.dp))
-            .padding(18.dp),
+            .padding(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("선택한 열차", color = IosBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)

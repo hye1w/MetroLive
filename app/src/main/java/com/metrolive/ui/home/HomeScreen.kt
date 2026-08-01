@@ -49,6 +49,13 @@ fun HomeScreen(
         Text("어디로 갈까요?", style = MaterialTheme.typography.headlineLarge)
         var locating by remember { mutableStateOf(false) }
         var locMsg by remember { mutableStateOf<String?>(null) }
+        // 시작 시 자동으로 현 위치 최근접 역을 출발역으로 (실패하면 기존 출발역 유지)
+        LaunchedEffect(Unit) {
+            onLocateMe { nearest, dist ->
+                if (dist >= 0) { store.setOrigin(nearest); origin = nearest
+                    locMsg = "현 위치 기준 · $nearest (약 ${dist}m)" }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "출발역 · ${origin} (탭해서 변경)",
