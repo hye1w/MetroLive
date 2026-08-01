@@ -189,6 +189,13 @@ private fun Header(
                 )
             }
         }
+        st.apiError?.let { err ->
+            Text(
+                "⚠ $err",
+                fontSize = 11.sp, color = IosRed, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
         if (ApiKeys.isSample()) {
             Text(
                 "샘플키 모드 · 최대 5건 제한 — 설정 탭에서 개인 키 입력 시 해제",

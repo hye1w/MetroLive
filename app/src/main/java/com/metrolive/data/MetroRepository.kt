@@ -1,12 +1,21 @@
 package com.metrolive.data
 
+import com.metrolive.ApiKeys
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import java.text.SimpleDateFormat
 import java.util.Locale
 
 class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
+
+    /** 마지막 API 오류 (성공 시 null) — 화면 표시용 */
+    @Volatile var lastError: String? = null
+        private set
 
     private val dtFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.KOREA)
 
@@ -29,8 +38,12 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
             runCatching {
                 val pos = api.realtimePosition(lineName = lineName).list
                 val arr = api.realtimeArrival(stationName = baseStation).list
+                lastError = if (pos.isEmpty()) "응답에 열차 데이터 없음 (키 한도/미제공 시간대 가능)" else null
                 emit(merge(pos, arr, index, upLine, sign))
-            }.onFailure { emit(emptyList()) }
+            }.onFailure { e ->
+                lastError = e.message?.take(120) ?: e.javaClass.simpleName
+                emit(emptyList())
+            }
             delay(pollMs)
         }
     }
@@ -103,6 +116,19 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         val t = dtFormat.parse(recptnDt)?.time ?: return 0
         ((System.currentTimeMillis() - t) / 1000).toInt().coerceIn(0, 300)
     }.getOrDefault(0)
+
+    /** 설정 화면 연결 테스트: 원문 응답 확인 */
+    suspend fun rawTest(): String = withContext(Dispatchers.IO) {
+        val key = ApiKeys.current()
+        val url = "http://swopenapi.seoul.go.kr/api/subway/$key/json/realtimePosition/0/5/2호선"
+        runCatching {
+            val client = OkHttpClient()
+            client.newCall(Request.Builder().url(url).build()).execute().use { res ->
+                val body = res.body?.string().orEmpty()
+                "HTTP ${res.code}\n키: ${key.take(8)}…\n${body.take(400)}"
+            }
+        }.getOrElse { "요청 실패: ${it.javaClass.simpleName} ${it.message?.take(200)}" }
+    }
 
     fun congestion(trainNo: String): TrainCongestion =
         StaticData.statisticalCongestion(trainNo)

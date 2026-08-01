@@ -20,6 +20,7 @@ data class LiveUiState(
     val trains: List<Train> = emptyList(),
     val selectedTrainNo: String? = null,
     val secondsSinceRefresh: Int = 0,
+    val apiError: String? = null,
     val congestion: TrainCongestion? = null,
     val showBoardingSheet: Boolean = false,
     val boarding: BoardingPosition? = null,
@@ -64,6 +65,7 @@ class LiveMapViewModel(
                 _state.value = _state.value.copy(
                     trains = trains,
                     secondsSinceRefresh = 0,
+                    apiError = repo.lastError,
                     selectedTrainNo = _state.value.selectedTrainNo
                         ?.takeIf { no -> trains.any { it.trainNo == no } }
                         ?: trains.filter { it.etaSeconds >= 0 }.minByOrNull { it.etaSeconds }?.trainNo

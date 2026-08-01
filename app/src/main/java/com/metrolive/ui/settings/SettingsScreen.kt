@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.metrolive.ApiKeys
 import com.metrolive.data.FavoritesStore
+import com.metrolive.data.MetroRepository
+import kotlinx.coroutines.launch
 import com.metrolive.ui.theme.*
 
 @Composable
@@ -65,6 +67,30 @@ fun SettingsScreen() {
                 "재빌드 없이 즉시 적용됩니다. 키 발급: data.seoul.go.kr → 인증키 신청 → 실시간 지하철",
                 style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 6.dp),
             )
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── 연결 테스트
+        SettingCard("API 연결 테스트") {
+            val scope = rememberCoroutineScope()
+            var testing by remember { mutableStateOf(false) }
+            var result by remember { mutableStateOf<String?>(null) }
+            Button(
+                onClick = {
+                    testing = true; result = null
+                    scope.launch {
+                        result = MetroRepository().rawTest()
+                        testing = false
+                    }
+                },
+                enabled = !testing,
+                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+            ) { Text(if (testing) "테스트 중…" else "실시간 API 원문 응답 확인", fontWeight = FontWeight.Bold) }
+            result?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, fontSize = 11.sp, color = IosSecondary)
+            }
         }
 
         Spacer(Modifier.height(16.dp))
