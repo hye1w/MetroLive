@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
 
     <application
+        android:name=".App"
         android:label="지하철 라이브"
         android:theme="@style/Theme.MetroLive"
         android:supportsRtl="true"

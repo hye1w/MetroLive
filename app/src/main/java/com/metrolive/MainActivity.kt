@@ -27,6 +27,11 @@ import com.metrolive.ui.home.HomeScreen
 import com.metrolive.ui.live.LiveMapScreen
 import com.metrolive.ui.live.LiveMapViewModel
 import com.metrolive.ui.route.RouteScreen
+import com.metrolive.ui.settings.SettingsScreen
+import com.metrolive.data.StationCoords
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import android.annotation.SuppressLint
 import com.metrolive.ui.theme.*
 
 class MainActivity : ComponentActivity() {
@@ -58,7 +63,11 @@ class MainActivity : ComponentActivity() {
 
                 Box(Modifier.fillMaxSize().background(IosBg)) {
                     when (tab) {
-                        0 -> HomeScreen(onRoute = { f, t -> route = f to t })
+                        0 -> HomeScreen(
+                            onRoute = { f, t -> route = f to t },
+                            onLocateMe = { cb -> locateNearest(cb) },
+                        )
+                        2 -> SettingsScreen()
                         1 -> LiveMapScreen(vm) { train, dest ->
                             TripService.start(
                                 this@MainActivity, train.trainNo, dest,
@@ -79,6 +88,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         TabItem("🏠", "홈", tab == 0) { tab = 0 }
                         TabItem("🚇", "실시간", tab == 1) { tab = 1 }
+                        TabItem("⚙️", "설정", tab == 2) { tab = 2 }
                     }
 
                     // 경로 결과 (전체 화면 오버레이)
@@ -97,6 +107,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** 현 위치 → 최근접 역 (권한 없으면 무시) */
+    @SuppressLint("MissingPermission")
+    private fun locateNearest(onResult: (String, Int) -> Unit) {
+        runCatching {
+            val client = LocationServices.getFusedLocationProviderClient(this)
+            client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+                .addOnSuccessListener { loc ->
+                    val hit = loc?.let { StationCoords.nearest(it.latitude, it.longitude) }
+                    if (hit != null) onResult(hit.first, hit.second)
+                    else onResult("시청", -1) // 위치 실패 시 기본값 유지
+                }
+                .addOnFailureListener { onResult("시청", -1) }
+        }.onFailure { onResult("시청", -1) }
     }
 
     private fun requestPermissions() {

@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.metrolive.BuildConfig
+import com.metrolive.ApiKeys
 import com.metrolive.data.Network
 import com.metrolive.data.StaticData
 import com.metrolive.data.Train
@@ -189,9 +189,9 @@ private fun Header(
                 )
             }
         }
-        if (BuildConfig.SEOUL_API_KEY == "sample") {
+        if (ApiKeys.isSample()) {
             Text(
-                "샘플키 모드 · 응답 최대 5건 제한 — 열차가 안 보일 수 있어요",
+                "샘플키 모드 · 최대 5건 제한 — 설정 탭에서 개인 키 입력 시 해제",
                 fontSize = 11.sp, color = IosOrange, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
                     .clip(RoundedCornerShape(8.dp))

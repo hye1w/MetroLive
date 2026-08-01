@@ -1,7 +1,7 @@
 package com.metrolive.data
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
-import com.metrolive.BuildConfig
+import com.metrolive.ApiKeys
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -18,13 +18,13 @@ interface SeoulApi {
 
     @GET("api/subway/{key}/json/realtimePosition/0/100/{line}")
     suspend fun realtimePosition(
-        @Path("key") key: String = BuildConfig.SEOUL_API_KEY,
+        @Path("key") key: String = ApiKeys.current(),
         @Path("line") lineName: String,          // 예: "2호선"
     ): RealtimePositionResponse
 
     @GET("api/subway/{key}/json/realtimeStationArrival/0/30/{station}")
     suspend fun realtimeArrival(
-        @Path("key") key: String = BuildConfig.SEOUL_API_KEY,
+        @Path("key") key: String = ApiKeys.current(),
         @Path("station") stationName: String,    // 예: "시청"
     ): RealtimeArrivalResponse
 

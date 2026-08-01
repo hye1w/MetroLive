@@ -107,6 +107,43 @@ object Network {
         val transfers: Int,
     ) { val totalMin get() = (totalSec + 59) / 60 }
 
+    /** 요금 근사 (기본 1,400원/10km + 5km당 100원, 역간 1.1km 가정) */
+    fun fareOf(totalStops: Int): Int {
+        val km = totalStops * 1.1
+        val extra = if (km <= 10) 0 else (((km - 10) / 5).toInt() + 1) * 100
+        return 1400 + extra
+    }
+
+    /** 경유역 포함 탐색: 구간별 최적을 이어붙임 */
+    fun findRoutesVia(from: String, vias: List<String>, to: String): List<RouteVariant> {
+        if (vias.isEmpty()) return findRoutes(from, to)
+        val points = listOf(from) + vias + listOf(to)
+        if (points.zipWithNext().any { it.first == it.second }) return findRoutes(from, to)
+        val labels = listOf("최적" to 300, "최단시간" to 30, "최소환승" to 7200)
+        val variants = labels.mapNotNull { (label, penalty) ->
+            val segLegs = mutableListOf<Leg>()
+            for ((a, b) in points.zipWithNext()) {
+                val r = dijkstra(a, b, penalty) ?: return@mapNotNull null
+                r.legs.forEach { leg ->
+                    val last = segLegs.lastOrNull()
+                    if (last != null && last.line == leg.line && last.to == leg.from)
+                        segLegs[segLegs.lastIndex] = last.copy(to = leg.to, stops = last.stops + leg.stops)
+                    else segLegs += leg
+                }
+            }
+            val transfers = (segLegs.size - 1).coerceAtLeast(0)
+            RouteVariant(label, segLegs,
+                segLegs.sumOf { it.stops * RIDE_SEC } + transfers * TRANSFER_SEC, transfers)
+        }
+        val out = mutableListOf<RouteVariant>()
+        variants.forEach { v ->
+            val dup = out.firstOrNull { it.legs == v.legs }
+            if (dup == null) out += v
+            else out[out.indexOf(dup)] = dup.copy(label = dup.label + " · " + v.label)
+        }
+        return out
+    }
+
     /** 세 기준으로 탐색 후 중복 제거 */
     fun findRoutes(from: String, to: String): List<RouteVariant> {
         if (from == to) return emptyList()

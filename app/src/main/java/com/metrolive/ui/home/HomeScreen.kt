@@ -28,7 +28,10 @@ import com.metrolive.ui.theme.*
 /** 출발 기준역: 설정 저장값 사용 (GPS 최근접 역 연동은 좌표 데이터 확보 후) */
 
 @Composable
-fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
+fun HomeScreen(
+    onRoute: (from: String, to: String) -> Unit,
+    onLocateMe: ((nearest: String, distanceM: Int) -> Unit) -> Unit = {},
+) {
     val ctx = LocalContext.current
     val store = remember { FavoritesStore(ctx) }
     var refresh by remember { mutableIntStateOf(0) } // 즐겨찾기 변경 갱신용
@@ -44,12 +47,34 @@ fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
     ) {
         Spacer(Modifier.height(12.dp))
         Text("어디로 갈까요?", style = MaterialTheme.typography.headlineLarge)
-        Text(
-            "출발역 · ${origin} (탭해서 변경)",
-            style = MaterialTheme.typography.labelSmall,
-            color = IosBlue,
-            modifier = Modifier.clickable { pickerFor = "origin" }.padding(vertical = 2.dp),
-        )
+        var locating by remember { mutableStateOf(false) }
+        var locMsg by remember { mutableStateOf<String?>(null) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "출발역 · ${origin} (탭해서 변경)",
+                style = MaterialTheme.typography.labelSmall,
+                color = IosBlue,
+                modifier = Modifier.clickable { pickerFor = "origin" }.padding(vertical = 2.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                if (locating) "위치 확인 중…" else "📍 현 위치",
+                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = IosBlue,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(IosBlue.copy(alpha = .1f))
+                    .clickable(enabled = !locating) {
+                        locating = true; locMsg = null
+                        onLocateMe { nearest, dist ->
+                            locating = false
+                            store.setOrigin(nearest); origin = nearest
+                            locMsg = "최근접 역: $nearest (약 ${dist}m)"
+                        }
+                    }
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
+        locMsg?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
         Spacer(Modifier.height(16.dp))
 
         // ── 1. 도착지 검색

@@ -21,12 +21,15 @@ import androidx.compose.ui.platform.LocalContext
 import com.metrolive.data.FavoritesStore
 import com.metrolive.data.MetroRepository
 import com.metrolive.data.Network
+import com.metrolive.ui.home.StationPickerSheet
 import com.metrolive.data.StaticData
 import com.metrolive.ui.theme.*
 
 @Composable
 fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
-    val variants = remember(from, to) { Network.findRoutes(from, to) }
+    var vias by remember { mutableStateOf(listOf<String>()) }
+    var viaPicker by remember { mutableStateOf(false) }
+    val variants = remember(from, to, vias) { Network.findRoutesVia(from, vias, to) }
     var tab by remember { mutableIntStateOf(0) }
 
     Column(Modifier.fillMaxSize().background(IosBg).statusBarsPadding()) {
@@ -39,9 +42,21 @@ fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
             Text("‹", fontSize = 30.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
             Column(Modifier.padding(start = 4.dp)) {
-                Text("$from → $to", style = MaterialTheme.typography.titleMedium)
-                Text("역간 2분 · 환승 4분 근사 기준",
-                    style = MaterialTheme.typography.labelSmall)
+                Text(
+                    if (vias.isEmpty()) "$from → $to"
+                    else "$from → ${vias.joinToString(" → ")} → $to",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Row {
+                    Text("역간 2분 · 환승 4분 근사", style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        if (vias.isEmpty()) "  ＋경유" else "  경유 지우기",
+                        fontSize = 11.sp, color = IosBlue, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable {
+                            if (vias.isEmpty()) viaPicker = true else vias = emptyList()
+                        }.padding(start = 4.dp),
+                    )
+                }
             }
             Spacer(Modifier.weight(1f))
             Text(
@@ -91,8 +106,11 @@ fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
                 Text("분", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = IosBlue,
                     modifier = Modifier.padding(bottom = 4.dp, start = 2.dp))
                 Spacer(Modifier.width(16.dp))
-                Text("환승 ${v.transfers}회 · ${v.legs.sumOf { it.stops }}개 역",
-                    fontSize = 13.sp, color = IosSecondary, modifier = Modifier.padding(bottom = 6.dp))
+                Text(
+                    "환승 ${v.transfers}회 · ${v.legs.sumOf { it.stops }}개 역 · " +
+                        "약 ${"%,d".format(Network.fareOf(v.legs.sumOf { it.stops }))}원",
+                    fontSize = 13.sp, color = IosSecondary, modifier = Modifier.padding(bottom = 6.dp),
+                )
             }
             Spacer(Modifier.height(14.dp))
 
@@ -174,9 +192,21 @@ fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
 
             Spacer(Modifier.height(14.dp))
             Text(
-                "다음 단계: 첫 구간 실시간 도착·환승 대기 반영, 플랫폼·빠른 환승칸 표시",
+                "시간·요금은 근사값입니다. 실시간 도착은 출발역 카드 참고.",
                 style = MaterialTheme.typography.labelSmall,
             )
+        }
+
+        if (viaPicker) {
+            StationPickerSheet(
+                title = "경유역 선택",
+                store = store,
+                onFavChanged = {},
+                onDismiss = { viaPicker = false },
+            ) { picked ->
+                if (picked != from && picked != to) vias = vias + picked
+                viaPicker = false
+            }
         }
     }
 }
