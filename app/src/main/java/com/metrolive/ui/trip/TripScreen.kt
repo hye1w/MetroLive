@@ -121,17 +121,22 @@ fun TripScreen(onClose: () -> Unit) {
                                         com.metrolive.data.normalizeTrainNo(t.trainNo) ==
                                         com.metrolive.data.normalizeTrainNo(it) } == true
                                     Column(
-                                        Modifier.clip(RoundedCornerShape(10.dp))
+                                        Modifier.width(72.dp).height(52.dp)
+                                            .clip(RoundedCornerShape(10.dp))
                                             .background(if (isMine) IosBlue.copy(alpha = .08f) else IosCard)
                                             .border(if (isMine) 2.dp else 1.5.dp,
                                                 if (isMine) IosBlue else legColor,
                                                 RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 7.dp, vertical = 4.dp),
+                                            .padding(horizontal = 4.dp, vertical = 4.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
                                     ) {
                                         Text(t.destination, fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold, color = legColor, maxLines = 1)
-                                        Text(t.trainNo, fontSize = 9.sp, color = IosSecondary)
+                                        Text(if (isMine) "내 열차" else t.trainNo,
+                                            fontSize = 9.sp, maxLines = 1,
+                                            color = if (isMine) IosBlue else IosSecondary,
+                                            fontWeight = if (isMine) FontWeight.Bold else FontWeight.Normal)
                                     }
                                 }
                             }
@@ -182,12 +187,20 @@ fun TripScreen(onClose: () -> Unit) {
                         // 전체 역 목록 (진행 중 구간엔 실시간 열차·내 열차 표시)
                         val mids = StaticData.stationsBetween(leg.line, leg.from, leg.to)
                         val canonicalL = StaticData.segmentOf(leg.line)
+                        val idxMapT = StaticData.indexOf(leg.line)
+                        val fwdT = (idxMapT[leg.to] ?: 0) > (idxMapT[leg.from] ?: 0)
+                        val myTrain = if (i == curLegIdx) info?.trainNo?.let { no ->
+                            legTrains.firstOrNull {
+                                com.metrolive.data.normalizeTrainNo(it.trainNo) ==
+                                com.metrolive.data.normalizeTrainNo(no)
+                            }
+                        } else null
                         mids.forEachIndexed { mi, name ->
                             if (mi == 0 || mi == mids.lastIndex) return@forEachIndexed
                             val here = if (i == selLeg) legTrains.filter { tt ->
                                 canonicalL.getOrNull(tt.position.toInt())?.name == name } else emptyList()
                             Row(verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(vertical = 2.dp)) {
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                                 Box(Modifier.size(6.dp).clip(CircleShape)
                                     .background(if (done) IosSeparator else c.copy(alpha = .5f)))
                                 Spacer(Modifier.width(8.dp))
@@ -207,6 +220,19 @@ fun TripScreen(onClose: () -> Unit) {
                                         modifier = Modifier.clip(RoundedCornerShape(6.dp))
                                             .background((if (mine) IosBlue else c).copy(alpha = .12f))
                                             .padding(horizontal = 6.dp, vertical = 2.dp))
+                                }
+                                // 내 열차 기준 이 역까지 남은 시간 (앞쪽 역만)
+                                myTrain?.let { mt ->
+                                    val stIdx = idxMapT[name]
+                                    if (stIdx != null) {
+                                        val ahead = if (fwdT) stIdx > mt.position else stIdx < mt.position
+                                        if (ahead) {
+                                            val min = (kotlin.math.abs(stIdx - mt.position).toInt()) * 2
+                                            Spacer(Modifier.weight(1f))
+                                            Text("약 ${min}분", fontSize = 11.sp,
+                                                color = IosBlue, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
                             }
                         }

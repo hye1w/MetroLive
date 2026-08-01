@@ -94,6 +94,14 @@ object StaticData {
         val d = idx[destName] ?: return true
         val a = idx[from] ?: return true
         val b = idx[to] ?: return true
+        if (line == "2호선") {
+            // 순환선: 진행 방향 기준 거리 비교 (신도림행 외선처럼 한 바퀴 도는 경우 포함)
+            val n = segmentOf(line).size
+            val inc = b > a                       // 내선(index 증가) 여부
+            fun dist(x: Int) = if (inc) ((x - a) % n + n) % n else ((a - x) % n + n) % n
+            val dDest = dist(d).let { if (it == 0) n else it }  // 출발역 종착=한 바퀴
+            return dist(b) <= dDest
+        }
         return if (b > a) d >= b else d <= b
     }
 

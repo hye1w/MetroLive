@@ -26,3 +26,7 @@ object ApiKeys {
     fun set(key: String) = App.prefs.edit().putString("seoul_api_key", key.trim()).apply()
     fun isSample(): Boolean = current() == "sample"
 }
+
+
+/** 앱 포그라운드 여부 (백그라운드에선 실시간 폴링 중단해 호출량 절약) */
+object AppVisibility { @Volatile var foreground = true }

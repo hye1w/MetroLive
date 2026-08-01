@@ -62,7 +62,6 @@ class LiveMapViewModel(
                     apiError = repo.lastError,
                     selectedTrainNo = _state.value.selectedTrainNo
                         ?.takeIf { no -> trains.any { it.trainNo == no } }
-                        ?: trains.firstOrNull()?.trainNo,
                 )
             }
         }
@@ -85,7 +84,10 @@ class LiveMapViewModel(
         restartPolling()
     }
 
-    fun selectTrain(trainNo: String) { _state.value = _state.value.copy(selectedTrainNo = trainNo) }
+    fun selectTrain(trainNo: String) {
+        _state.value = _state.value.copy(
+            selectedTrainNo = if (_state.value.selectedTrainNo == trainNo) null else trainNo)
+    }
 
     fun openCongestion() {
         val t = _state.value.selectedTrain ?: return

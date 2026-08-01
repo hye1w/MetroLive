@@ -30,6 +30,7 @@ import com.metrolive.ui.live.LiveMapViewModel
 import com.metrolive.ui.route.RouteScreen
 import com.metrolive.ui.trip.TripScreen
 import com.metrolive.ui.settings.SettingsScreen
+import com.metrolive.AppVisibility
 import com.metrolive.data.StationCoords
 import com.google.android.gms.location.LocationServices
 import android.annotation.SuppressLint
@@ -139,6 +140,9 @@ class MainActivity : ComponentActivity() {
                 .addOnFailureListener { onResult("시청", -1) }
         }.onFailure { onResult("시청", -1) }
     }
+
+    override fun onResume() { super.onResume(); AppVisibility.foreground = true }
+    override fun onPause() { super.onPause(); AppVisibility.foreground = false }
 
     private fun requestPermissions() {
         val perms = buildList {

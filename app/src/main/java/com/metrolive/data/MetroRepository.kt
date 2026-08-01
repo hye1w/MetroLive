@@ -1,6 +1,7 @@
 package com.metrolive.data
 
 import com.metrolive.ApiKeys
+import com.metrolive.AppVisibility
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -12,6 +13,22 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
+
+    companion object {
+        // 노선별 위치 응답 8초 캐시 (실시간탭+경로화면 동시 폴링 시 중복 호출 방지)
+        private val posCache = mutableMapOf<String, Pair<Long, List<RealtimePositionRow>>>()
+        private const val CACHE_MS = 8_000L
+    }
+
+    private suspend fun fetchPositions(lineName: String): List<RealtimePositionRow> {
+        val now = System.currentTimeMillis()
+        synchronized(posCache) {
+            posCache[lineName]?.let { (t, list) -> if (now - t < CACHE_MS) return list }
+        }
+        val list = api.realtimePosition(lineName = lineName).list
+        synchronized(posCache) { posCache[lineName] = now to list }
+        return list
+    }
 
     /** 마지막 API 오류 (성공 시 null) — 화면 표시용 */
     @Volatile var lastError: String? = null
@@ -30,16 +47,17 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
     fun liveTrains(
         lineName: String,
         upLine: Boolean,
-        pollMs: Long = 10_000,
+        pollMs: Long = 15_000,
     ): Flow<List<Train>> = flow {
         val index = StaticData.indexOf(lineName)
         val sign = if (StaticData.movesForward(lineName, upLine)) 1 else -1
         while (true) {
+            if (!AppVisibility.foreground) { delay(pollMs); continue }
             var done = false
             repeat(2) { attempt ->
                 if (done) return@repeat
                 runCatching {
-                    val pos = api.realtimePosition(lineName = lineName).list
+                    val pos = fetchPositions(lineName)
                     lastError = if (pos.isEmpty()) "응답에 열차 데이터 없음" else null
                     emit(merge(pos, emptyList(), index, upLine, sign))
                     done = true
@@ -94,7 +112,7 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
             val index = StaticData.indexOf(lineName)
             val sign = if (StaticData.movesForward(lineName, upLine)) 1 else -1
             merge(
-                api.realtimePosition(lineName = lineName).list,
+                fetchPositions(lineName),
                 api.realtimeArrival(stationName = baseStation).list,
                 index, upLine, sign,
             )

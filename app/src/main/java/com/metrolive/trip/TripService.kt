@@ -242,7 +242,7 @@ class TripService : Service() {
             .addAction(0, "안내 종료", stopPi)
             .setContentIntent(pi)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
     }
 
     private fun updateNotification(n: Notification) = nm().notify(NOTI_ID, n)

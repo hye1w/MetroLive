@@ -219,25 +219,28 @@ fun RouteScreen(
                                             com.metrolive.data.normalizeTrainNo(t.trainNo) ==
                                             com.metrolive.data.normalizeTrainNo(chosenNo)
                                         Column(
-                                            Modifier.clip(RoundedCornerShape(10.dp))
+                                            Modifier.width(72.dp).height(52.dp)      // 사이즈 통일
+                                                .clip(RoundedCornerShape(10.dp))
                                                 .background(if (isSel) IosBlue.copy(alpha = .08f) else IosCard)
                                                 .border(if (isSel) 2.dp else 1.5.dp,
                                                     if (isSel) IosBlue else legColor,
                                                     RoundedCornerShape(10.dp))
                                                 .clickable { selTrainNo = t.trainNo }
-                                                .padding(horizontal = 7.dp, vertical = 4.dp),
+                                                .padding(horizontal = 4.dp, vertical = 4.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
                                         ) {
                                             Text(t.destination, fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (covers) legColor else IosSecondary,
                                                 maxLines = 1)
-                                            if (!covers) Text("중도 종착", fontSize = 8.sp, color = IosSecondary)
                                             Text(
-                                                if (t.etaSeconds >= 0)
+                                                if (!covers) "중도 종착"
+                                                else if (t.etaSeconds >= 0)
                                                     "%d:%02d".format(t.etaSeconds / 60, t.etaSeconds % 60)
                                                 else t.trainNo,
                                                 fontSize = 9.sp,
+                                                maxLines = 1,
                                                 color = if (isSel) IosBlue else IosSecondary,
                                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
                                             )
