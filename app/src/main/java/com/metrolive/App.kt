@@ -10,7 +10,8 @@ class App : Application() {
         instance = this
     }
     companion object {
-        lateinit var instance: App; private set
+        lateinit var instance: App
+            private set
         val prefs: SharedPreferences
             get() = instance.getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
