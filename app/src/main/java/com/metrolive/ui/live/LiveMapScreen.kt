@@ -37,6 +37,7 @@ fun LiveMapScreen(
     onStartTrip: (Train, destStation: String) -> Unit,
 ) {
     val st by vm.state.collectAsState()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var destPickerFor by remember { mutableStateOf<Train?>(null) }
     val lineColor = Color(Network.lineColors[st.line] ?: 0xFF00A84D)
 
@@ -68,8 +69,10 @@ fun LiveMapScreen(
         BoardingPositionSheet(
             initial = st.boarding,
             onConfirm = { pos ->
+                val forTrip = st.boardingForTrip
                 vm.confirmBoarding(pos)
-                destPickerFor = st.selectedTrain            // 다음 단계: 하차역 선택
+                if (forTrip) destPickerFor = st.selectedTrain   // 탑승 흐름일 때만 하차역 선택
+                else com.metrolive.trip.TripService.updateBoarding(ctx, pos)
             },
             onDismiss = { vm.confirmBoarding(st.boarding) },
         )
@@ -335,7 +338,7 @@ private fun TrainCard(
             Column(horizontalAlignment = Alignment.End) {
                 Text(train.etaSeconds.mmss(), color = IosBlue,
                     fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                Text("$baseStation 도착", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
+                Text("${baseStation}까지", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
             }
         }
     }
@@ -346,42 +349,61 @@ private fun BottomBoardCard(
     train: Train, baseStation: String,
     onCongestion: () -> Unit, onBoard: () -> Unit, modifier: Modifier,
 ) {
+    val cong = remember(train.trainNo) { StaticData.statisticalCongestion(train.trainNo) }
     Column(
         modifier.padding(horizontal = 14.dp).padding(bottom = 84.dp)
             .navigationBarsPadding()
-            .clip(RoundedCornerShape(22.dp)).background(GlassWhite)
-            .border(1.dp, Color.White.copy(alpha = .8f), RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(22.dp)).background(IosCard)          // 불투명
+            .border(0.5.dp, IosSeparator, RoundedCornerShape(22.dp))
             .padding(14.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("선택한 열차", color = IosBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            Text("탑승 여유 ✓", color = Line2Green, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.clip(RoundedCornerShape(20.dp))
-                    .background(Line2Green.copy(alpha = .12f))
-                    .padding(horizontal = 9.dp, vertical = 3.dp))
-        }
-        Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(train.destination, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+            Text(train.destination, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.width(8.dp))
             Text("열차 ${train.trainNo}", style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.weight(1f))
-            Text(train.etaSeconds.mmss(), color = IosBlue, fontSize = 21.sp,
-                fontWeight = FontWeight.ExtraBold)
-        }
-        Text("$baseStation ${train.platform} · 다른 열차는 위 카드를 탭해 선택",
-            style = MaterialTheme.typography.labelSmall)
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onCongestion, modifier = Modifier.weight(1f)) {
-                Text("혼잡도 보기", fontWeight = FontWeight.Bold)
-            }
-            Button(onClick = onBoard, modifier = Modifier.weight(2f).height(48.dp),
-                shape = RoundedCornerShape(13.dp)) {
-                Text("탑승 시작", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            if (train.etaSeconds >= 0) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(train.etaSeconds.mmss(), color = IosBlue,
+                        fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("${baseStation}까지", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
+                }
             }
         }
+        Spacer(Modifier.height(4.dp))
+        Text("현위치 ${train.curStation} ${if (train.isStopped) "정차" else "출발"}",
+            fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        // 칸별 혼잡도 미니 게이지 (10칸)
+        Row(
+            Modifier.clickable(onClick = onCongestion),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("혼잡도", style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.width(8.dp))
+            cong.levels.forEach { lv ->
+                Box(
+                    Modifier.padding(horizontal = 1.dp).size(width = 14.dp, height = 8.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(
+                            when (lv) {
+                                com.metrolive.data.CongestionLevel.RELAXED -> IosGreen
+                                com.metrolive.data.CongestionLevel.NORMAL -> IosYellow
+                                com.metrolive.data.CongestionLevel.CROWDED -> IosOrange
+                                else -> IosRed
+                            }
+                        )
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Text("자세히 ›", fontSize = 11.sp, color = IosBlue, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(10.dp))
+        Button(
+            onClick = onBoard,
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+            shape = RoundedCornerShape(13.dp),
+        ) { Text("탑승 시작", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
     }
 }
 

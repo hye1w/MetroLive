@@ -34,7 +34,7 @@ import com.metrolive.ui.theme.*
 @Composable
 fun RouteScreen(
     from: String, to: String, onBack: () -> Unit,
-    onStartGuidance: (List<Network.Leg>) -> Unit = {},
+    onStartGuidance: (List<Network.Leg>, String?) -> Unit = { _, _ -> },
 ) {
     var vias by remember { mutableStateOf(listOf<String>()) }
     var viaPicker by remember { mutableStateOf(false) }
@@ -115,6 +115,7 @@ fun RouteScreen(
 
         // ── 구간별 실시간: 선택 구간의 열차 위치를 15초마다 갱신
         var selLeg by remember(v) { mutableIntStateOf(0) }
+        val startTrainNoHolder = remember(v) { mutableStateOf<String?>(null) }
         var legTrains by remember { mutableStateOf<List<Train>>(emptyList()) }
         val curLeg = v.legs.getOrNull(selLeg)
         LaunchedEffect(selLeg, v) {
@@ -187,10 +188,13 @@ fun RouteScreen(
                     val slice = canonical.map { it.name }.let { if (fwd) it else it.reversed() }
                     // 추천 열차: 출발역 직전에서 접근 중인 열차
                     val fromIdx = idxMap[curLeg.from] ?: 0
+                    var selTrainNo by remember(v, selLeg) { mutableStateOf<String?>(null) }
                     val recNo = legTrains
                         .filter { if (fwd) it.position <= fromIdx + 0.05f else it.position >= fromIdx - 0.05f }
                         .let { l -> if (fwd) l.maxByOrNull { it.position } else l.minByOrNull { it.position } }
                         ?.trainNo
+                    val chosenNo = selTrainNo ?: recNo          // 기본 = 추천, 탭하면 변경
+                    if (selLeg == 0) startTrainNoHolder.value = chosenNo
                     val listState = rememberLazyListState()
                     LaunchedEffect(curLeg, slice.size) {   // 출발역 근처로 초기 스크롤
                         val target = (slice.indexOf(curLeg.from) - 1).coerceAtLeast(0)
@@ -209,18 +213,17 @@ fun RouteScreen(
                                 // 열차 카드 영역 (추천 열차는 파란 강조 + ETA)
                                 Box(Modifier.height(64.dp), contentAlignment = Alignment.BottomCenter) {
                                     trainsHere.firstOrNull()?.let { t ->
-                                        val isRec = t.trainNo == recNo
+                                        val isSel = t.trainNo == chosenNo
                                         Column(
                                             Modifier.clip(RoundedCornerShape(10.dp))
-                                                .background(if (isRec) IosBlue.copy(alpha = .1f) else IosCard)
-                                                .border(if (isRec) 2.dp else 1.5.dp,
-                                                    if (isRec) IosBlue else legColor,
+                                                .background(if (isSel) IosBlue.copy(alpha = .08f) else IosCard)
+                                                .border(if (isSel) 2.dp else 1.5.dp,
+                                                    if (isSel) IosBlue else legColor,
                                                     RoundedCornerShape(10.dp))
+                                                .clickable { selTrainNo = t.trainNo }
                                                 .padding(horizontal = 7.dp, vertical = 4.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                         ) {
-                                            if (isRec) Text("추천", fontSize = 8.sp,
-                                                fontWeight = FontWeight.Black, color = IosBlue)
                                             Text(t.destination, fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold, color = legColor, maxLines = 1)
                                             Text(
@@ -228,8 +231,8 @@ fun RouteScreen(
                                                     "%d:%02d".format(t.etaSeconds / 60, t.etaSeconds % 60)
                                                 else t.trainNo,
                                                 fontSize = 9.sp,
-                                                color = if (isRec) IosBlue else IosSecondary,
-                                                fontWeight = if (isRec) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSel) IosBlue else IosSecondary,
+                                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
                                             )
                                         }
                                     }
@@ -282,9 +285,8 @@ fun RouteScreen(
                     arrivals.forEachIndexed { ai, a ->
                         Row(Modifier.padding(vertical = 3.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            if (ai == 0) Text("추천 ", fontSize = 12.sp,
-                                fontWeight = FontWeight.Black, color = IosBlue)
                             Text(a.destination + "행", fontSize = 14.sp,
+                                color = if (ai == 0) IosBlue else IosLabel,
                                 fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.width(8.dp))
                             Text(a.message, fontSize = 11.sp, color = IosSecondary,
@@ -304,10 +306,13 @@ fun RouteScreen(
             var expanded by remember(v) { mutableStateOf(setOf<Int>()) }
             v.legs.forEachIndexed { i, leg ->
                 val c = Color(Network.lineColors[leg.line] ?: 0xFF8E8E93)
-                Row {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                    Column(
+                        Modifier.fillMaxHeight(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
                         Box(Modifier.size(14.dp).clip(CircleShape).background(c))
-                        Box(Modifier.width(4.dp).height(64.dp).background(c))
+                        Box(Modifier.width(4.dp).weight(1f).background(c))
                         if (i == v.legs.lastIndex)
                             Box(Modifier.size(14.dp).clip(CircleShape)
                                 .background(Color.White)
@@ -388,7 +393,7 @@ fun RouteScreen(
             Spacer(Modifier.height(16.dp))
             // 이 경로로 안내 시작 → 구간별 실시간 추적 + 환승/하차 알림
             Button(
-                onClick = { onStartGuidance(v.legs) },
+                onClick = { onStartGuidance(v.legs, startTrainNoHolder.value) },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
             ) { Text("이 경로로 하차 알림 시작", fontWeight = FontWeight.Bold, fontSize = 15.sp) }

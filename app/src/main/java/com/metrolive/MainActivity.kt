@@ -23,12 +23,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.metrolive.data.StaticData
 import com.metrolive.trip.TripService
-import com.metrolive.trip.TripState
 import com.metrolive.data.Network
 import com.metrolive.ui.home.HomeScreen
 import com.metrolive.ui.live.LiveMapScreen
 import com.metrolive.ui.live.LiveMapViewModel
 import com.metrolive.ui.route.RouteScreen
+import com.metrolive.ui.trip.TripScreen
 import com.metrolive.ui.settings.SettingsScreen
 import com.metrolive.data.StationCoords
 import com.google.android.gms.location.LocationServices
@@ -96,11 +96,11 @@ class MainActivity : ComponentActivity() {
                     route?.let { (f, t) ->
                         RouteScreen(
                             from = f, to = t, onBack = { route = null },
-                            onStartGuidance = { legs ->
+                            onStartGuidance = { legs, chosenTrainNo ->
                                 TripService.startLegs(
                                     this@MainActivity,
                                     legs.map { TripService.Leg(it.line, it.from, it.to) },
-                                    trainNo = null, boarding = st.boarding,
+                                    trainNo = chosenTrainNo, boarding = st.boarding,
                                 )
                                 // 첫 구간 노선·방향으로 실시간 화면 전환
                                 legs.firstOrNull()?.let { first ->
@@ -116,13 +116,9 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 칩/알림 탭 시 중앙 확장 카드
+                    // 칩/알림 탭 → 안내 중 화면 (남은 경로 + 실시간 + 종료)
                     if (tripCardVisible) {
-                        TripCenterCard(
-                            boarding = st.boarding?.toString(),
-                            onEditBoarding = { vm.requestBoard() },
-                            onDismiss = { tripCardVisible = false },
-                        )
+                        TripScreen(onClose = { tripCardVisible = false })
                     }
                 }
             }
@@ -165,61 +161,5 @@ private fun TabItem(emoji: String, label: String, selected: Boolean, onTap: () -
         Text(emoji, fontSize = 18.sp)
         Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold,
             color = if (selected) IosBlue else IosSecondary)
-    }
-}
-
-/** 중앙 확장 카드 — 실제 안내 상태 표시 (칩/알림 탭 시) */
-@Composable
-fun TripCenterCard(boarding: String?, onEditBoarding: () -> Unit, onDismiss: () -> Unit) {
-    val info by TripState.info.collectAsState()
-    val ctx = androidx.compose.ui.platform.LocalContext.current
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = .35f))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            Modifier
-                .padding(28.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .background(IosCard)
-                .clickable(enabled = false) {}
-                .padding(22.dp)
-                .fillMaxWidth(),
-        ) {
-            if (info == null) {
-                Text("진행 중인 안내가 없습니다", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                Text("경로 화면에서 '이 경로로 하차 알림 시작'을 눌러보세요",
-                    style = MaterialTheme.typography.bodyMedium)
-            } else {
-                val i = info!!
-                Text(
-                    if (i.alerting) "🔔 곧 ${i.next} 도착!" else "${i.line} 안내 중 (${i.legIdx + 1}/${i.legsCount} 구간)",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (i.alerting) IosBlue else IosLabel,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    if (i.left > 0) "다음역 ${i.next} · ${i.dest}까지 ${i.left}정거장"
-                    else "열차 위치 확인 중…",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        boarding?.let { "내 탑승 위치 $it 칸" } ?: "탑승 위치 미입력",
-                        fontSize = 13.sp, color = IosSecondary,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onEditBoarding) {
-                        Text("탑승 위치", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                    TextButton(onClick = { TripService.stop(ctx); onDismiss() }) {
-                        Text("안내 종료", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = IosRed)
-                    }
-                }
-            }
-        }
     }
 }

@@ -68,6 +68,8 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         val last = (index.size - 1).coerceAtLeast(0).toFloat()
         return positions
             .filter { it.upDown == wantUpDown }
+            .groupBy { normalizeTrainNo(it.trainNo) }
+            .map { (_, rows) -> rows.maxBy { it.receivedAt } }   // 중복 행 → 최신만
             .mapNotNull { row ->
                 val idx = index[row.stationName] ?: return@mapNotNull null
                 val stopped = row.status == "1"

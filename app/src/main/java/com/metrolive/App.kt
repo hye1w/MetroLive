@@ -17,11 +17,12 @@ class App : Application() {
     }
 }
 
-/** API 키: 설정 화면 입력값 우선, 없으면 빌드시 키(기본 sample) */
+/** API 키: 설정 입력값 → 내 개인 키(고정) 순. 재설치해도 개인 키 유지 */
 object ApiKeys {
+    private const val MY_KEY = "7070636950646e6a313031446b694e65"
     fun current(): String =
         App.prefs.getString("seoul_api_key", null)?.takeIf { it.isNotBlank() }
-            ?: BuildConfig.SEOUL_API_KEY
+            ?: MY_KEY
     fun set(key: String) = App.prefs.edit().putString("seoul_api_key", key.trim()).apply()
     fun isSample(): Boolean = current() == "sample"
 }

@@ -23,6 +23,7 @@ data class LiveUiState(
     val apiError: String? = null,
     val congestion: TrainCongestion? = null,
     val showBoardingSheet: Boolean = false,
+    val boardingForTrip: Boolean = false,
     val boarding: BoardingPosition? = null,
 ) {
     val selectedTrain get() = trains.firstOrNull { it.trainNo == selectedTrainNo }
@@ -99,7 +100,9 @@ class LiveMapViewModel(
         _state.value = _state.value.copy(congestion = repo.congestion(t.trainNo))
     }
     fun closeCongestion() { _state.value = _state.value.copy(congestion = null) }
-    fun requestBoard() { _state.value = _state.value.copy(showBoardingSheet = true) }
+    fun requestBoard(forTrip: Boolean = true) {
+        _state.value = _state.value.copy(showBoardingSheet = true, boardingForTrip = forTrip)
+    }
     fun confirmBoarding(pos: BoardingPosition?) {
         _state.value = _state.value.copy(showBoardingSheet = false, boarding = pos)
     }

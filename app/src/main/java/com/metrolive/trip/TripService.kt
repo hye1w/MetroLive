@@ -26,6 +26,11 @@ object TripState {
     private val _info = MutableStateFlow<Info?>(null)
     val info: StateFlow<Info?> = _info
     internal fun set(i: Info?) { _info.value = i }
+
+    data class LegInfo(val line: String, val from: String, val to: String)
+    private val _legs = MutableStateFlow<List<LegInfo>>(emptyList())
+    val legs: StateFlow<List<LegInfo>> = _legs
+    internal fun setLegs(l: List<LegInfo>) { _legs.value = l }
 }
 
 /**
@@ -52,6 +57,12 @@ class TripService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSession(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_SET_BOARDING) {
+            intent.getIntExtra(EXTRA_CAR, -1).takeIf { it > 0 }?.let {
+                boarding = BoardingPosition(it, intent.getIntExtra(EXTRA_DOOR, 2))
+            }
+            return START_STICKY
+        }
         val raw = intent?.getStringExtra(EXTRA_LEGS) ?: return START_NOT_STICKY.also { stopSelf() }
         legs = raw.split(";").mapNotNull {
             it.split("|").takeIf { p -> p.size == 3 }?.let { p -> Leg(p[0], p[1], p[2]) }
@@ -61,6 +72,7 @@ class TripService : Service() {
         boarding = intent.getIntExtra(EXTRA_CAR, -1).takeIf { it > 0 }
             ?.let { BoardingPosition(it, intent.getIntExtra(EXTRA_DOOR, 2)) }
         legIdx = 0; alerted = false
+        TripState.setLegs(legs.map { TripState.LegInfo(it.line, it.from, it.to) })
 
         createChannels()
         startForeground(NOTI_ID, ongoingNotification("위치 확인 중…", -1))
@@ -125,9 +137,11 @@ class TripService : Service() {
         val leg = legs.getOrNull(legIdx)
         TripState.set(TripState.Info(
             leg?.line ?: "", next, leg?.to ?: "", left, legIdx, legs.size, alerting = false))
+        val ticker = "다음역 $next · ${leg?.to}까지 ${left}정거장"
         val title = if (left > 0) "다음역 $next · ${leg?.to}까지 ${left}정거장"
                     else "경로 안내 중 (${legIdx + 1}/${legs.size} 구간)"
         return base(CH_CHIP)
+            .setTicker(ticker)
             .setContentTitle(title)
             .setContentText(text)
             .setSubText("${leg?.line ?: ""} ${legIdx + 1}/${legs.size}")
@@ -202,6 +216,7 @@ class TripService : Service() {
         )
         return NotificationCompat.Builder(this, channel)
             .setSmallIcon(com.metrolive.R.drawable.ic_stat_train)
+            .setOnlyAlertOnce(true)
             .addAction(0, "안내 종료", stopPi)
             .setContentIntent(pi)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -226,6 +241,7 @@ class TripService : Service() {
 
     private fun stopSession() {
         TripState.set(null)
+        TripState.setLegs(emptyList())
         scope.coroutineContext.cancelChildren()
         stopForeground(STOP_FOREGROUND_REMOVE)
         nm().cancel(NOTI_ID + 1)
@@ -241,6 +257,13 @@ class TripService : Service() {
         private const val CH_CHIP = "trip_chip"
         private const val CH_ALERT = "trip_alert"
         const val ACTION_STOP = "com.metrolive.STOP_TRIP"
+        const val ACTION_SET_BOARDING = "com.metrolive.SET_BOARDING"
+
+        fun updateBoarding(ctx: Context, pos: BoardingPosition?) {
+            ctx.startService(
+                Intent(ctx, TripService::class.java).setAction(ACTION_SET_BOARDING)
+                    .putExtra(EXTRA_CAR, pos?.car ?: -1).putExtra(EXTRA_DOOR, pos?.door ?: 2))
+        }
         const val EXTRA_LEGS = "legs"; const val EXTRA_TRAIN = "train"
 
         fun stop(ctx: Context) {
