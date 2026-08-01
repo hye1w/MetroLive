@@ -193,8 +193,8 @@ fun RouteScreen(
                         .filter { if (fwd) it.position <= fromIdx + 0.05f else it.position >= fromIdx - 0.05f }
                         .let { l -> if (fwd) l.maxByOrNull { it.position } else l.minByOrNull { it.position } }
                         ?.trainNo
-                    val chosenNo = selTrainNo ?: recNo          // 기본 = 추천, 탭하면 변경
-                    if (selLeg == 0) startTrainNoHolder.value = chosenNo
+                    val chosenNo = selTrainNo ?: startTrainNoHolder.value ?: recNo
+                    if (selLeg == 0 && selTrainNo != null) startTrainNoHolder.value = selTrainNo
                     val listState = rememberLazyListState()
                     LaunchedEffect(curLeg, slice.size) {   // 출발역 근처로 초기 스크롤
                         val target = (slice.indexOf(curLeg.from) - 1).coerceAtLeast(0)
@@ -203,8 +203,7 @@ fun RouteScreen(
                     LazyRow(state = listState) {
                         itemsIndexed(slice) { si, name ->
                             val trainsHere = legTrains.filter { t ->
-                                canonical.getOrNull(t.position.toInt() + if (t.position % 1 > 0.5f) 1 else 0)
-                                    ?.name == name || canonical.getOrNull(t.position.toInt())?.name == name
+                                canonical.getOrNull(t.position.toInt())?.name == name
                             }.distinctBy { it.trainNo }
                             Column(
                                 Modifier.width(78.dp),
@@ -213,7 +212,9 @@ fun RouteScreen(
                                 // 열차 카드 영역 (추천 열차는 파란 강조 + ETA)
                                 Box(Modifier.height(64.dp), contentAlignment = Alignment.BottomCenter) {
                                     trainsHere.firstOrNull()?.let { t ->
-                                        val isSel = t.trainNo == chosenNo
+                                        val isSel = chosenNo != null &&
+                                            com.metrolive.data.normalizeTrainNo(t.trainNo) ==
+                                            com.metrolive.data.normalizeTrainNo(chosenNo)
                                         Column(
                                             Modifier.clip(RoundedCornerShape(10.dp))
                                                 .background(if (isSel) IosBlue.copy(alpha = .08f) else IosCard)
@@ -272,7 +273,10 @@ fun RouteScreen(
                 mutableStateOf<List<MetroRepository.ArrivalInfo>>(emptyList())
             }
             LaunchedEffect(from, firstLeg.line) {
-                arrivals = MetroRepository().arrivalsFor(from, firstLeg.line)
+                arrivals = MetroRepository().arrivalsFor(
+                    from, firstLeg.line,
+                    StaticData.legUp(firstLeg.line, firstLeg.from, firstLeg.to),
+                )
             }
             if (arrivals.isNotEmpty()) {
                 Column(
@@ -283,10 +287,16 @@ fun RouteScreen(
                         fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IosSecondary)
                     Spacer(Modifier.height(6.dp))
                     arrivals.forEachIndexed { ai, a ->
-                        Row(Modifier.padding(vertical = 3.dp),
+                        val rowSel = startTrainNoHolder.value?.let {
+                            com.metrolive.data.normalizeTrainNo(it) == a.trainNo } ?: (ai == 0)
+                        Row(Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (rowSel) IosBlue.copy(alpha = .08f) else Color.Transparent)
+                                .clickable { startTrainNoHolder.value = a.trainNo }
+                                .padding(vertical = 4.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Text(a.destination + "행", fontSize = 14.sp,
-                                color = if (ai == 0) IosBlue else IosLabel,
+                                color = if (rowSel) IosBlue else IosLabel,
                                 fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.width(8.dp))
                             Text(a.message, fontSize = 11.sp, color = IosSecondary,
@@ -340,6 +350,21 @@ fun RouteScreen(
                                 val hasTrain = i == selLeg && legTrains.any { t ->
                                     canonicalL.getOrNull(t.position.toInt())?.name == name
                                 }
+                                // 선택 열차의 이 역 도착 예상 (역간 평균 소요 기반)
+                                val chosen = legTrains.firstOrNull { tt ->
+                                    startTrainNoHolder.value?.let {
+                                        com.metrolive.data.normalizeTrainNo(tt.trainNo) ==
+                                        com.metrolive.data.normalizeTrainNo(it) } == true
+                                }
+                                val etaHere: Int? = if (i == selLeg && chosen != null) {
+                                    val stIdx = StaticData.indexOf(leg.line)[name]
+                                    stIdx?.let {
+                                        val fwdL = (StaticData.indexOf(leg.line)[leg.to] ?: 0) >
+                                                   (StaticData.indexOf(leg.line)[leg.from] ?: 0)
+                                        val diff = if (fwdL) it - chosen.position else chosen.position - it
+                                        if (diff > 0) (diff * StaticData.AVG_SEGMENT_SECONDS).toInt() else null
+                                    }
+                                } else null
                                 Row(verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.padding(vertical = 2.dp)) {
                                     Box(Modifier.size(6.dp).clip(CircleShape)
@@ -348,6 +373,12 @@ fun RouteScreen(
                                     Text(name, fontSize = 12.sp,
                                         color = if (hasTrain) c else IosSecondary,
                                         fontWeight = if (hasTrain) FontWeight.Bold else FontWeight.Normal)
+                                    etaHere?.let { sec ->
+                                        Spacer(Modifier.weight(1f))
+                                        Text("약 %d:%02d 후".format(sec / 60, sec % 60),
+                                            fontSize = 11.sp, color = IosBlue,
+                                            fontWeight = FontWeight.Bold)
+                                    }
                                     if (hasTrain) {
                                         Spacer(Modifier.width(6.dp))
                                         val t = legTrains.first { tt ->

@@ -22,6 +22,7 @@ object TripState {
     data class Info(
         val line: String, val next: String, val dest: String,
         val left: Int, val legIdx: Int, val legsCount: Int, val alerting: Boolean,
+        val trainNo: String? = null,
     )
     private val _info = MutableStateFlow<Info?>(null)
     val info: StateFlow<Info?> = _info
@@ -136,7 +137,8 @@ class TripService : Service() {
     private fun ongoingNotification(text: String, left: Int, next: String = "…"): Notification {
         val leg = legs.getOrNull(legIdx)
         TripState.set(TripState.Info(
-            leg?.line ?: "", next, leg?.to ?: "", left, legIdx, legs.size, alerting = false))
+            leg?.line ?: "", next, leg?.to ?: "", left, legIdx, legs.size,
+            alerting = false, trainNo = trainNo))
         val ticker = "다음역 $next · ${leg?.to}까지 ${left}정거장"
         val title = if (left > 0) "다음역 $next · ${leg?.to}까지 ${left}정거장"
                     else "경로 안내 중 (${legIdx + 1}/${legs.size} 구간)"
@@ -146,6 +148,10 @@ class TripService : Service() {
             .setContentText(text)
             .setSubText("${leg?.line ?: ""} ${legIdx + 1}/${legs.size}")
             .setShowWhen(false)
+            .also { b ->
+                val total = StaticData.segmentOf(leg?.line ?: "1호선").size
+                if (left in 0..total) b.setProgress(total, (total - left).coerceIn(0, total), false)
+            }
             .setOngoing(true).setSilent(true)
             .build()
     }
@@ -175,7 +181,8 @@ class TripService : Service() {
             .build()
             .also {
                 TripState.set(TripState.Info(
-                    leg.line, leg.to, legs.last().to, 1, legIdx, legs.size, alerting = true))
+                    leg.line, leg.to, legs.last().to, 1, legIdx, legs.size,
+                    alerting = true, trainNo = trainNo))
             }
     }
 

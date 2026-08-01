@@ -117,9 +117,15 @@ fun TripScreen(onClose: () -> Unit) {
                         Column(Modifier.width(78.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(Modifier.height(56.dp), contentAlignment = Alignment.BottomCenter) {
                                 trainsHere.firstOrNull()?.let { t ->
+                                    val isMine = info?.trainNo?.let {
+                                        com.metrolive.data.normalizeTrainNo(t.trainNo) ==
+                                        com.metrolive.data.normalizeTrainNo(it) } == true
                                     Column(
-                                        Modifier.clip(RoundedCornerShape(10.dp)).background(IosCard)
-                                            .border(1.5.dp, legColor, RoundedCornerShape(10.dp))
+                                        Modifier.clip(RoundedCornerShape(10.dp))
+                                            .background(if (isMine) IosBlue.copy(alpha = .08f) else IosCard)
+                                            .border(if (isMine) 2.dp else 1.5.dp,
+                                                if (isMine) IosBlue else legColor,
+                                                RoundedCornerShape(10.dp))
                                             .padding(horizontal = 7.dp, vertical = 4.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
@@ -173,6 +179,37 @@ fun TripScreen(onClose: () -> Unit) {
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(vertical = 4.dp),
                         )
+                        // 전체 역 목록 (진행 중 구간엔 실시간 열차·내 열차 표시)
+                        val mids = StaticData.stationsBetween(leg.line, leg.from, leg.to)
+                        val canonicalL = StaticData.segmentOf(leg.line)
+                        mids.forEachIndexed { mi, name ->
+                            if (mi == 0 || mi == mids.lastIndex) return@forEachIndexed
+                            val here = if (i == selLeg) legTrains.filter { tt ->
+                                canonicalL.getOrNull(tt.position.toInt())?.name == name } else emptyList()
+                            Row(verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(vertical = 2.dp)) {
+                                Box(Modifier.size(6.dp).clip(CircleShape)
+                                    .background(if (done) IosSeparator else c.copy(alpha = .5f)))
+                                Spacer(Modifier.width(8.dp))
+                                Text(name, fontSize = 12.sp,
+                                    color = if (here.isNotEmpty()) c else IosSecondary,
+                                    fontWeight = if (here.isNotEmpty()) FontWeight.Bold else FontWeight.Normal)
+                                here.firstOrNull()?.let { tt ->
+                                    val mine = info?.trainNo?.let {
+                                        com.metrolive.data.normalizeTrainNo(tt.trainNo) ==
+                                        com.metrolive.data.normalizeTrainNo(it) } == true
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        (if (mine) "내 열차 · " else "🚇 ") + "${tt.destination} ${tt.trainNo}",
+                                        fontSize = 10.5.sp,
+                                        color = if (mine) IosBlue else c,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                                            .background((if (mine) IosBlue else c).copy(alpha = .12f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp))
+                                }
+                            }
+                        }
                         if (i == legs.lastIndex)
                             Text(leg.to, fontWeight = FontWeight.Bold, fontSize = 15.sp,
                                 modifier = Modifier.padding(top = 6.dp))
@@ -185,7 +222,7 @@ fun TripScreen(onClose: () -> Unit) {
         Button(
             onClick = { TripService.stop(ctx); onClose() },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp).height(52.dp),
+                .navigationBarsPadding().padding(bottom = 28.dp).height(52.dp),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(containerColor = IosRed),
         ) { Text("하차 알림 종료", fontWeight = FontWeight.Bold, fontSize = 15.sp) }

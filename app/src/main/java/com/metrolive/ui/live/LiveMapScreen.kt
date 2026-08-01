@@ -334,13 +334,7 @@ private fun TrainCard(
             Text("${train.curStation} ${if (train.isStopped) "정차" else "출발"} · ${train.trainNo}",
                 style = MaterialTheme.typography.labelSmall)
         }
-        if (train.etaSeconds >= 0) {
-            Column(horizontalAlignment = Alignment.End) {
-                Text(train.etaSeconds.mmss(), color = IosBlue,
-                    fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                Text("${baseStation}까지", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
-            }
-        }
+        // (기준역 ETA는 경로 화면에서만 제공)
     }
 }
 
@@ -362,13 +356,6 @@ private fun BottomBoardCard(
             Spacer(Modifier.width(8.dp))
             Text("열차 ${train.trainNo}", style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.weight(1f))
-            if (train.etaSeconds >= 0) {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(train.etaSeconds.mmss(), color = IosBlue,
-                        fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("${baseStation}까지", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
-                }
-            }
         }
         Spacer(Modifier.height(4.dp))
         Text("현위치 ${train.curStation} ${if (train.isStopped) "정차" else "출발"}",

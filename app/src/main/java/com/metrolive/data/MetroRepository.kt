@@ -40,9 +40,8 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
                 if (done) return@repeat
                 runCatching {
                     val pos = api.realtimePosition(lineName = lineName).list
-                    val arr = api.realtimeArrival(stationName = baseStation).list
                     lastError = if (pos.isEmpty()) "응답에 열차 데이터 없음" else null
-                    emit(merge(pos, arr, index, upLine, sign))
+                    emit(merge(pos, emptyList(), index, upLine, sign))   // 실시간 탭: 위치만
                     done = true
                 }.onFailure { e ->
                     lastError = "일시 오류 · 재시도 중 (${e.javaClass.simpleName})"
@@ -101,16 +100,24 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
             )
         }.getOrDefault(emptyList())
 
-    /** 경로 첫 구간용: 특정 역의 해당 노선 실시간 도착 목록 */
-    data class ArrivalInfo(val destination: String, val etaSeconds: Int, val message: String)
+    /** 경로 첫 구간용: 특정 역의 해당 노선 실시간 도착 목록 (방향 필터) */
+    data class ArrivalInfo(
+        val trainNo: String, val destination: String, val etaSeconds: Int, val message: String,
+    )
 
-    suspend fun arrivalsFor(station: String, lineName: String): List<ArrivalInfo> = runCatching {
+    suspend fun arrivalsFor(station: String, lineName: String, upLine: Boolean? = null): List<ArrivalInfo> = runCatching {
         val id = subwayIds[lineName]
+        val wantDir: Set<String>? = upLine?.let {
+            if (lineName == "2호선") setOf(if (it) "내선" else "외선", if (it) "0" else "1")
+            else setOf(if (it) "상행" else "하행", if (it) "0" else "1")
+        }
         api.realtimeArrival(stationName = station).list
             .filter { id == null || it.subwayId == id }
+            .filter { wantDir == null || it.upDown in wantDir }
             .map {
                 val raw = it.etaSeconds.toIntOrNull() ?: 0
                 ArrivalInfo(
+                    trainNo = normalizeTrainNo(it.trainNo),
                     destination = it.destination,
                     etaSeconds = (raw - lagSeconds(it.receivedAt)).coerceAtLeast(0),
                     message = it.positionMsg,
