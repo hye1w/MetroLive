@@ -142,7 +142,7 @@ class TripService : Service() {
         val ticker = "다음역 $next · ${leg?.to}까지 ${left}정거장"
         val title = if (left > 0) "다음역 $next · ${leg?.to}까지 ${left}정거장"
                     else "경로 안내 중 (${legIdx + 1}/${legs.size} 구간)"
-        return base(CH_CHIP)
+        val compat = base(CH_CHIP)
             .setTicker(ticker)
             .setContentTitle(title)
             .setContentText(text)
@@ -154,6 +154,20 @@ class TripService : Service() {
             }
             .setOngoing(true).setSilent(true)
             .build()
+        // Android 16+: 상태바 칩(짧은 텍스트) 승격 시도 — 미지원 기기는 일반 진행 알림
+        if (Build.VERSION.SDK_INT >= 36 && left > 0) {
+            runCatching {
+                val b = Notification.Builder.recoverBuilder(this, compat)
+                Notification.Builder::class.java
+                    .getMethod("setShortCriticalText", String::class.java)
+                    .invoke(b, "${leg?.to} ${left}정거장")
+                Notification.Builder::class.java
+                    .getMethod("requestPromotedOngoing", Boolean::class.javaPrimitiveType)
+                    .invoke(b, true)
+                return b.build()
+            }
+        }
+        return compat
     }
 
     private fun alertNotification(leg: Leg, etaSec: Int): Notification {

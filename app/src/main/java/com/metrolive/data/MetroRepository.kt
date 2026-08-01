@@ -26,9 +26,9 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
     )
 
     /** 선택 노선의 실시간 열차 + 기준역 도착 ETA. recptnDt 시차 보정 포함. */
+    /** 실시간 탭용: 위치만 폴링 (기준역/ETA 개념 제거) */
     fun liveTrains(
         lineName: String,
-        baseStation: String,
         upLine: Boolean,
         pollMs: Long = 10_000,
     ): Flow<List<Train>> = flow {
@@ -36,16 +36,16 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         val sign = if (StaticData.movesForward(lineName, upLine)) 1 else -1
         while (true) {
             var done = false
-            repeat(2) { attempt ->                       // DNS 일시 실패 등 1회 즉시 재시도
+            repeat(2) { attempt ->
                 if (done) return@repeat
                 runCatching {
                     val pos = api.realtimePosition(lineName = lineName).list
                     lastError = if (pos.isEmpty()) "응답에 열차 데이터 없음" else null
-                    emit(merge(pos, emptyList(), index, upLine, sign))   // 실시간 탭: 위치만
+                    emit(merge(pos, emptyList(), index, upLine, sign))
                     done = true
                 }.onFailure { e ->
                     lastError = "일시 오류 · 재시도 중 (${e.javaClass.simpleName})"
-                    if (attempt == 0) delay(1200)        // 기존 목록 유지한 채 재시도
+                    if (attempt == 0) delay(1200)
                 }
             }
             delay(pollMs)
