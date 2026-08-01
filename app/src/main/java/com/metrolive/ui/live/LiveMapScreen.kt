@@ -48,7 +48,6 @@ fun LiveMapScreen(
                 line = st.line,
                 upLine = st.upLine,
                 lineColor = lineColor,
-                baseStation = st.baseStation,
                 trains = st.trains,
                 selectedNo = st.selectedTrainNo,
                 onTrainTap = vm::selectTrain,
@@ -57,7 +56,7 @@ fun LiveMapScreen(
         }
         st.selectedTrain?.let { train ->
             BottomBoardCard(
-                train = train, baseStation = st.baseStation,
+                train = train,
                 onCongestion = vm::openCongestion, onBoard = vm::requestBoard,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
@@ -219,7 +218,7 @@ private fun Header(
 
 @Composable
 private fun TrainMap(
-    line: String, upLine: Boolean, lineColor: Color, baseStation: String,
+    line: String, upLine: Boolean, lineColor: Color,
     trains: List<Train>, selectedNo: String?,
     onTrainTap: (String) -> Unit, modifier: Modifier,
 ) {
@@ -268,7 +267,7 @@ private fun TrainMap(
                     if (group.size == 1) {
                         val (t, frac) = group[0]
                         TrainCard(
-                            train = t, lineColor = lineColor, baseStation = baseStation,
+                            train = t, lineColor = lineColor,
                             arrow = arrow, selected = t.trainNo == selectedNo,
                             onTap = { onTrainTap(t.trainNo) },
                             modifier = Modifier.align(Alignment.TopEnd)
@@ -283,7 +282,7 @@ private fun TrainMap(
                         ) {
                             group.sortedBy { it.second }.forEach { (t, _) ->
                                 TrainCard(
-                                    train = t, lineColor = lineColor, baseStation = baseStation,
+                                    train = t, lineColor = lineColor,
                                     arrow = arrow, selected = t.trainNo == selectedNo,
                                     onTap = { onTrainTap(t.trainNo) },
                                     modifier = Modifier,
@@ -299,7 +298,7 @@ private fun TrainMap(
 
 @Composable
 private fun TrainCard(
-    train: Train, lineColor: Color, baseStation: String,
+    train: Train, lineColor: Color,
     arrow: String, selected: Boolean, onTap: () -> Unit, modifier: Modifier,
 ) {
     Row(
@@ -340,7 +339,7 @@ private fun TrainCard(
 
 @Composable
 private fun BottomBoardCard(
-    train: Train, baseStation: String,
+    train: Train,
     onCongestion: () -> Unit, onBoard: () -> Unit, modifier: Modifier,
 ) {
     val cong = remember(train.trainNo) { StaticData.statisticalCongestion(train.trainNo) }

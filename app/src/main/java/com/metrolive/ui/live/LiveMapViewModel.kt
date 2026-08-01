@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.metrolive.data.BoardingPosition
 import com.metrolive.data.MetroRepository
-import com.metrolive.data.StaticData
 import com.metrolive.data.Train
 import com.metrolive.data.TrainCongestion
 import kotlinx.coroutines.Job
@@ -27,12 +26,6 @@ data class LiveUiState(
     val boarding: BoardingPosition? = null,
 ) {
     val selectedTrain get() = trains.firstOrNull { it.trainNo == selectedTrainNo }
-    /** ETA 기준역: 기본 출발역이 이 노선에 있으면 그 역, 아니면 구간 중간역 */
-    val baseStation: String get() {
-        val origin = com.metrolive.data.FavoritesStore(com.metrolive.App.instance).origin()
-        if (StaticData.indexOf(line).containsKey(origin)) return origin
-        return StaticData.segmentOf(line).let { it.getOrNull(it.size / 2)?.name ?: "" }
-    }
 }
 
 class LiveMapViewModel(
@@ -62,14 +55,13 @@ class LiveMapViewModel(
         pollJob?.cancel()
         val s = _state.value
         pollJob = viewModelScope.launch {
-            repo.liveTrains(s.line, s.baseStation, s.upLine).collect { trains ->
+            repo.liveTrains(s.line, s.upLine).collect { trains ->
                 _state.value = _state.value.copy(
                     trains = trains,
                     secondsSinceRefresh = 0,
                     apiError = repo.lastError,
                     selectedTrainNo = _state.value.selectedTrainNo
                         ?.takeIf { no -> trains.any { it.trainNo == no } }
-                        ?: trains.filter { it.etaSeconds >= 0 }.minByOrNull { it.etaSeconds }?.trainNo
                         ?: trains.firstOrNull()?.trainNo,
                 )
             }
