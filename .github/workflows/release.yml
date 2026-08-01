@@ -1,18 +1,42 @@
-name: Release APK
+name: Build & Auto Release APK
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '17' }
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Inject API key
         run: echo "SEOUL_API_KEY=sample" >> local.properties
+
       - name: Build APK
-        run: chmod +x gradlew && ./gradlew assembleRelease
-      - uses: softprops/action-gh-release@v2
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Remove previous release
+        run: gh release delete latest --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish latest release
+        uses: softprops/action-gh-release@v2
         with:
+          tag_name: latest
+          name: 최신 빌드 (자동)
+          body: 커밋 ${{ github.sha }} 기준 자동 빌드
           files: app/build/outputs/apk/release/*.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
