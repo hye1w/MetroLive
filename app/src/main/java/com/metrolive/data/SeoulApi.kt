@@ -16,15 +16,17 @@ import java.util.concurrent.TimeUnit
  */
 interface SeoulApi {
 
-    @GET("api/subway/{key}/json/realtimePosition/0/100/{line}")
+    @GET("api/subway/{key}/json/realtimePosition/0/{end}/{line}")
     suspend fun realtimePosition(
         @Path("key") key: String = ApiKeys.current(),
+        @Path("end") end: Int = if (ApiKeys.isSample()) 5 else 100,  // 샘플키는 5건 초과 요청 시 오류
         @Path("line") lineName: String,          // 예: "2호선"
     ): RealtimePositionResponse
 
-    @GET("api/subway/{key}/json/realtimeStationArrival/0/30/{station}")
+    @GET("api/subway/{key}/json/realtimeStationArrival/0/{end}/{station}")
     suspend fun realtimeArrival(
         @Path("key") key: String = ApiKeys.current(),
+        @Path("end") end: Int = if (ApiKeys.isSample()) 5 else 30,
         @Path("station") stationName: String,    // 예: "시청"
     ): RealtimeArrivalResponse
 
