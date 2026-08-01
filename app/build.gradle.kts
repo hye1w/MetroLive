@@ -26,7 +26,10 @@ android {
             "\"${localProps.getProperty("SEOUL_API_KEY", "sample")}\"")
     }
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
