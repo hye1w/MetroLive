@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.metrolive.data.FavoritesStore
 import com.metrolive.data.MetroRepository
 import com.metrolive.data.Network
+import com.metrolive.data.StaticData
 import com.metrolive.ui.theme.*
 
 @Composable
@@ -150,9 +151,20 @@ fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
                             fontSize = 12.sp, color = c, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(vertical = 4.dp),
                         )
-                        if (i < v.legs.lastIndex)
-                            Text("${leg.to}에서 환승 · 도보 약 4분",
-                                fontSize = 12.sp, color = IosSecondary)
+                        if (i < v.legs.lastIndex) {
+                            val nextLine = v.legs[i + 1].line
+                            val tip = StaticData.transferTip(leg.to, leg.line, nextLine)
+                            Text(
+                                buildString {
+                                    append("${leg.to}에서 ${nextLine} 환승 · 도보 약 4분")
+                                    tip?.let {
+                                        append(" · 빠른 환승 ${it.car}칸")
+                                        it.platform?.let { pf -> append(" · $pf") }
+                                    }
+                                },
+                                fontSize = 12.sp, color = IosSecondary,
+                            )
+                        }
                         else
                             Text(leg.to, fontWeight = FontWeight.Bold, fontSize = 15.sp,
                                 modifier = Modifier.padding(top = 8.dp))

@@ -59,8 +59,11 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize().background(IosBg)) {
                     when (tab) {
                         0 -> HomeScreen(onRoute = { f, t -> route = f to t })
-                        1 -> LiveMapScreen(vm) { train ->
-                            TripService.start(this@MainActivity, train.trainNo, "홍대입구", st.boarding)
+                        1 -> LiveMapScreen(vm) { train, dest ->
+                            TripService.start(
+                                this@MainActivity, train.trainNo, dest,
+                                st.line, st.upLine, st.boarding,
+                            )
                             tripCardVisible = true
                         }
                     }
@@ -137,7 +140,7 @@ fun TripCenterCard(boarding: String?, onEditBoarding: () -> Unit, onDismiss: () 
                 .padding(22.dp)
                 .fillMaxWidth(),
         ) {
-            Text("2호선 성수행 · 탑승중", style = MaterialTheme.typography.titleMedium)
+            Text("탑승중 · 하차 알림 작동", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
             Text("다음역 · 도착역까지 남은 정거장은 알림에서 갱신됩니다",
                 style = MaterialTheme.typography.bodyMedium)

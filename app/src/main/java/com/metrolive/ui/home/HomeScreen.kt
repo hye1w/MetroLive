@@ -25,8 +25,7 @@ import com.metrolive.data.FavoritesStore
 import com.metrolive.data.Network
 import com.metrolive.ui.theme.*
 
-/** 현 위치 최근접 역 — M2에서 GPS 연동, 지금은 시청 고정 */
-const val CURRENT_STATION = "시청"
+/** 출발 기준역: 설정 저장값 사용 (GPS 최근접 역 연동은 좌표 데이터 확보 후) */
 
 @Composable
 fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
@@ -34,7 +33,8 @@ fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
     val store = remember { FavoritesStore(ctx) }
     var refresh by remember { mutableIntStateOf(0) } // 즐겨찾기 변경 갱신용
 
-    var pickerFor by remember { mutableStateOf<String?>(null) } // "dest"|"work"|"home"
+    var origin by remember { mutableStateOf(store.origin()) }
+    var pickerFor by remember { mutableStateOf<String?>(null) } // "dest"|"work"|"home"|"route"|"origin"
     var commuteFrom by remember { mutableStateOf<String?>(null) } // 출퇴근 등록 1단계 값
 
     Column(
@@ -44,7 +44,12 @@ fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
     ) {
         Spacer(Modifier.height(12.dp))
         Text("어디로 갈까요?", style = MaterialTheme.typography.headlineLarge)
-        Text("내 위치 · ${CURRENT_STATION}역 기준 (GPS 연동 예정)", style = MaterialTheme.typography.labelSmall)
+        Text(
+            "출발역 · ${origin} (탭해서 변경)",
+            style = MaterialTheme.typography.labelSmall,
+            color = IosBlue,
+            modifier = Modifier.clickable { pickerFor = "origin" }.padding(vertical = 2.dp),
+        )
         Spacer(Modifier.height(16.dp))
 
         // ── 1. 도착지 검색
@@ -83,7 +88,7 @@ fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
             if (favs.isEmpty()) EmptyHint("역 검색에서 ☆ 을 눌러 추가하세요")
             else FlowChips(favs.map { st ->
                 Chip("$st  ${Network.linesOf[st]?.joinToString(" ") { it.first().toString() } ?: ""}") {
-                    onRoute(CURRENT_STATION, st)
+                    onRoute(origin, st)
                 }
             })
 
@@ -103,6 +108,7 @@ fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
     pickerFor?.let { target ->
         StationPickerSheet(
             title = when (target) {
+                "origin" -> "출발역 선택"
                 "dest" -> "도착역 선택"
                 "route" -> if (commuteFrom == null) "즐겨찾는 경로 · 출발역" else "즐겨찾는 경로 · 도착역"
                 else -> if (commuteFrom == null) "${if (target == "work") "출근" else "퇴근"} 출발역"
@@ -113,7 +119,8 @@ fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
             onDismiss = { pickerFor = null; commuteFrom = null },
         ) { picked ->
             when (target) {
-                "dest" -> { pickerFor = null; onRoute(CURRENT_STATION, picked) }
+                "origin" -> { store.setOrigin(picked); origin = picked; pickerFor = null }
+                "dest" -> { pickerFor = null; onRoute(origin, picked) }
                 "route" -> {
                     if (commuteFrom == null) commuteFrom = picked
                     else {

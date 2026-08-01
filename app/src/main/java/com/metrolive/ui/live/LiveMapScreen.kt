@@ -34,9 +34,10 @@ private val TrackX = 44.dp
 @Composable
 fun LiveMapScreen(
     vm: LiveMapViewModel,
-    onStartTrip: (Train) -> Unit,
+    onStartTrip: (Train, destStation: String) -> Unit,
 ) {
     val st by vm.state.collectAsState()
+    var destPickerFor by remember { mutableStateOf<Train?>(null) }
     val lineColor = Color(Network.lineColors[st.line] ?: 0xFF00A84D)
 
     Box(Modifier.fillMaxSize().background(IosBg)) {
@@ -44,6 +45,7 @@ fun LiveMapScreen(
             Header(st, lineColor, onLine = vm::selectLine, onDirection = vm::setDirection)
             TrainMap(
                 line = st.line,
+                upLine = st.upLine,
                 lineColor = lineColor,
                 baseStation = st.baseStation,
                 trains = st.trains,
@@ -65,9 +67,57 @@ fun LiveMapScreen(
     if (st.showBoardingSheet) {
         BoardingPositionSheet(
             initial = st.boarding,
-            onConfirm = { pos -> vm.confirmBoarding(pos); st.selectedTrain?.let(onStartTrip) },
+            onConfirm = { pos ->
+                vm.confirmBoarding(pos)
+                destPickerFor = st.selectedTrain            // 다음 단계: 하차역 선택
+            },
             onDismiss = { vm.confirmBoarding(st.boarding) },
         )
+    }
+
+    // 하차역 선택 (현재 노선 역 목록, 진행 방향 순서)
+    destPickerFor?.let { train ->
+        DestinationSheet(
+            line = st.line, upLine = st.upLine,
+            onDismiss = { destPickerFor = null },
+        ) { dest ->
+            destPickerFor = null
+            onStartTrip(train, dest)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DestinationSheet(
+    line: String, upLine: Boolean,
+    onDismiss: () -> Unit, onPick: (String) -> Unit,
+) {
+    val forward = StaticData.movesForward(line, upLine)
+    val stations = StaticData.segmentOf(line).let { if (forward) it else it.reversed() }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = IosCard) {
+        Column(Modifier.padding(horizontal = 20.dp).fillMaxHeight(0.8f)) {
+            Text("하차역 선택", style = MaterialTheme.typography.titleMedium)
+            Text("${StaticData.terminusOf(line, upLine)} 진행 순서",
+                style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(8.dp))
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                stations.forEach { stn ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onPick(stn.name) }
+                            .padding(vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(stn.name, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.weight(1f))
+                        stn.transferInfo?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
+                }
+            }
+        }
     }
 }
 
@@ -78,7 +128,11 @@ private fun Header(
 ) {
     Column(Modifier.statusBarsPadding().padding(vertical = 8.dp)) {
         Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(st.line, style = MaterialTheme.typography.headlineLarge)
+            Column {
+                Text(st.line, style = MaterialTheme.typography.headlineLarge)
+                Text(StaticData.terminusOf(st.line, st.upLine),
+                    style = MaterialTheme.typography.labelSmall)
+            }
             Spacer(Modifier.width(8.dp))
             Box(Modifier.size(12.dp).clip(CircleShape).background(lineColor))
             Spacer(Modifier.weight(1f))
@@ -118,8 +172,10 @@ private fun Header(
             Modifier.padding(horizontal = 20.dp).fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp)).background(Color(0x1F767680)).padding(2.dp),
         ) {
-            listOf(true to if (st.line == "2호선") "내선순환" else "상행",
-                   false to if (st.line == "2호선") "외선순환" else "하행").forEach { (up, label) ->
+            listOf(true, false).map { up ->
+                val base = if (st.line == "2호선") (if (up) "내선" else "외선") else (if (up) "상행" else "하행")
+                up to "$base · ${StaticData.terminusOf(st.line, up)}"
+            }.forEach { (up, label) ->
                 val on = st.upLine == up
                 Text(
                     label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
@@ -148,11 +204,14 @@ private fun Header(
 
 @Composable
 private fun TrainMap(
-    line: String, lineColor: Color, baseStation: String,
+    line: String, upLine: Boolean, lineColor: Color, baseStation: String,
     trains: List<Train>, selectedNo: String?,
     onTrainTap: (String) -> Unit, modifier: Modifier,
 ) {
-    val stations = StaticData.segmentOf(line)
+    val forward = StaticData.movesForward(line, upLine)
+    val canonical = StaticData.segmentOf(line)
+    val stations = if (forward) canonical else canonical.reversed()
+    val lastIdx = (canonical.size - 1).coerceAtLeast(0).toFloat()
     Box(modifier.verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 220.dp)) {
         Box(
             Modifier.padding(start = TrackX).width(6.dp)
@@ -177,7 +236,8 @@ private fun TrainMap(
             }
         }
         trains.forEach { t ->
-            val y by animateFloatAsState(t.position, tween(1200), label = "trainY")
+            val displayPos = if (forward) t.position else lastIdx - t.position
+            val y by animateFloatAsState(displayPos, tween(1200), label = "trainY")
             TrainCard(
                 train = t, lineColor = lineColor, baseStation = baseStation,
                 selected = t.trainNo == selectedNo,

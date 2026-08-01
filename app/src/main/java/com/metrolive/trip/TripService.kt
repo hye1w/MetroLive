@@ -27,12 +27,16 @@ class TripService : Service() {
 
     private lateinit var trainNo: String
     private lateinit var destStation: String
+    private lateinit var line: String
+    private var upLine: Boolean = true
     private var boarding: BoardingPosition? = null
     private var alerted = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         trainNo = intent?.getStringExtra(EXTRA_TRAIN) ?: return START_NOT_STICKY.also { stopSelf() }
         destStation = intent.getStringExtra(EXTRA_DEST) ?: "홍대입구"
+        line = intent.getStringExtra(EXTRA_LINE) ?: "2호선"
+        upLine = intent.getBooleanExtra(EXTRA_UP, true)
         boarding = intent.getIntExtra(EXTRA_CAR, -1).takeIf { it > 0 }
             ?.let { BoardingPosition(it, intent.getIntExtra(EXTRA_DOOR, 2)) }
 
@@ -44,13 +48,16 @@ class TripService : Service() {
 
     /** 열차번호 기반 실시간 추적 (20초 주기) */
     private suspend fun track() {
-        val destIdx = StaticData.stationIndex[destStation] ?: return
-        repo.liveTrains("2호선", baseStation = destStation, upLine = true, pollMs = 20_000)
+        val index = StaticData.indexOf(line)
+        val seg = StaticData.segmentOf(line)
+        val destIdx = index[destStation] ?: return
+        val forward = StaticData.movesForward(line, upLine)
+        repo.liveTrains(line, baseStation = destStation, upLine = upLine, pollMs = 20_000)
             .collect { trains ->
                 val me = trains.firstOrNull { it.trainNo == trainNo } ?: return@collect
                 val curIdx = me.position.toInt()
-                val left = destIdx - curIdx                 // 남은 정거장 수 (내선: index 증가)
-                val next = StaticData.line2Segment.getOrNull(curIdx + 1)?.name ?: destStation
+                val left = if (forward) destIdx - curIdx else curIdx - destIdx
+                val next = seg.getOrNull(if (forward) curIdx + 1 else curIdx - 1)?.name ?: destStation
 
                 when {
                     left <= 0 -> { notifyArrived(); stopSession() }
@@ -65,19 +72,19 @@ class TripService : Service() {
 
     private fun ongoingNotification(next: String, left: Int): Notification =
         base(CH_CHIP)
-            .setContentTitle("2호선 성수행 탑승 중")
+            .setContentTitle("$line 탑승 중")
             .setContentText(
                 if (left < 0) "위치 확인 중…"
                 else "다음역 $next · ${destStation}까지 ${left}개 역"
             )
-            .setProgress(StaticData.line2Segment.size, StaticData.line2Segment.size - left, left < 0)
+            .setProgress(StaticData.segmentOf(line).size, (StaticData.segmentOf(line).size - left).coerceAtLeast(0), left < 0)
             .setOngoing(true)
             .setSilent(true)
             .build()
 
     /** 1정거장 전 — 문 방향 + 계단 방향(탑승 위치 기반) */
     private fun alertNotification(etaSec: Int): Notification {
-        val g = StaticData.exitGuide(destStation, upLine = true, boarding = boarding)
+        val g = StaticData.exitGuide(destStation, upLine = upLine, boarding = boarding)
         val eta = if (etaSec > 0) "약 %d:%02d 후".format(etaSec / 60, etaSec % 60) else "곧"
         return base(CH_ALERT)
             .setContentTitle("다음 역에서 내리세요! — 1정거장 전")
@@ -157,11 +164,16 @@ class TripService : Service() {
         private const val CH_CHIP = "trip_chip"
         private const val CH_ALERT = "trip_alert"
         const val EXTRA_TRAIN = "train"; const val EXTRA_DEST = "dest"
+        const val EXTRA_LINE = "line"; const val EXTRA_UP = "up"
         const val EXTRA_CAR = "car"; const val EXTRA_DOOR = "door"
 
-        fun start(ctx: Context, trainNo: String, dest: String, boarding: BoardingPosition?) {
+        fun start(
+            ctx: Context, trainNo: String, dest: String,
+            line: String, upLine: Boolean, boarding: BoardingPosition?,
+        ) {
             val i = Intent(ctx, TripService::class.java)
                 .putExtra(EXTRA_TRAIN, trainNo).putExtra(EXTRA_DEST, dest)
+                .putExtra(EXTRA_LINE, line).putExtra(EXTRA_UP, upLine)
                 .putExtra(EXTRA_CAR, boarding?.car ?: -1)
                 .putExtra(EXTRA_DOOR, boarding?.door ?: 2)
             if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)

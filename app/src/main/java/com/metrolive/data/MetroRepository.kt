@@ -24,11 +24,12 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         pollMs: Long = 10_000,
     ): Flow<List<Train>> = flow {
         val index = StaticData.indexOf(lineName)
+        val sign = if (StaticData.movesForward(lineName, upLine)) 1 else -1
         while (true) {
             runCatching {
                 val pos = api.realtimePosition(lineName = lineName).list
                 val arr = api.realtimeArrival(stationName = baseStation).list
-                emit(merge(pos, arr, index, upLine))
+                emit(merge(pos, arr, index, upLine, sign))
             }.onFailure { emit(emptyList()) }
             delay(pollMs)
         }
@@ -39,6 +40,7 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         arrivals: List<RealtimeArrivalRow>,
         index: Map<String, Int>,
         upLine: Boolean,
+        sign: Int,
     ): List<Train> {
         val wantUpDown = if (upLine) "0" else "1"
         val etaByTrain = arrivals.associateBy({ it.trainNo }) {
@@ -58,7 +60,7 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
                     trainNo = row.trainNo,
                     destination = row.destination.removeSuffix("행") + "행",
                     isExpress = row.express == "1",
-                    position = (idx + lagAdvance).coerceIn(0f, last),
+                    position = (idx + sign * lagAdvance).coerceIn(0f, last),
                     isStopped = stopped,
                     etaSeconds = etaByTrain[row.trainNo] ?: -1,
                 )

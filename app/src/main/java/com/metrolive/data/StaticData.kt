@@ -27,6 +27,45 @@ object StaticData {
     val line2Segment: List<Station> get() = segmentOf("2호선")
     val stationIndex: Map<String, Int> get() = indexOf("2호선")
 
+    /**
+     * 상행(up=true) 열차가 기준 목록의 index 증가 방향으로 이동하는가.
+     * 2호선: 내선(0) = index 증가. 그 외: 목록이 상행 종점부터 시작하므로 상행 = index 감소.
+     */
+    fun movesForward(line: String, up: Boolean): Boolean =
+        if (line == "2호선") up else !up
+
+    /** 진행 방면 종점명 ("-방면" 표기용). 순환선은 대표 방면 표기. */
+    fun terminusOf(line: String, up: Boolean): String {
+        if (line == "2호선") return if (up) "을지로 · 성수 방면" else "충정로 · 홍대 방면"
+        val seg = segmentOf(line)
+        if (seg.isEmpty()) return ""
+        val t = if (movesForward(line, up)) seg.last().name else seg.first().name
+        return "$t 방면"
+    }
+
+    /** 환승 팁 (역, 타는 노선 → 갈아탈 노선) — 샘플, 실차 검증하며 확장 */
+    data class TransferTip(val car: String, val platform: String?)
+    private val transferTips = mapOf(
+        Triple("신도림", "1호선", "2호선") to TransferTip("4-2", "3번 플랫폼"),
+        Triple("신도림", "2호선", "1호선") to TransferTip("5-4", "1번 플랫폼"),
+        Triple("교대", "2호선", "3호선") to TransferTip("5-3", null),
+        Triple("교대", "3호선", "2호선") to TransferTip("3-2", null),
+        Triple("왕십리", "2호선", "5호선") to TransferTip("8-1", null),
+        Triple("군자", "5호선", "7호선") to TransferTip("1-4", null),
+        Triple("군자", "7호선", "5호선") to TransferTip("5-2", null),
+        Triple("고속터미널", "3호선", "7호선") to TransferTip("2-3", null),
+        Triple("고속터미널", "3호선", "9호선") to TransferTip("8-2", null),
+        Triple("종로3가", "1호선", "3호선") to TransferTip("7-1", null),
+        Triple("동대문역사문화공원", "2호선", "4호선") to TransferTip("2-2", null),
+        Triple("동대문역사문화공원", "2호선", "5호선") to TransferTip("9-3", null),
+        Triple("사당", "2호선", "4호선") to TransferTip("3-3", null),
+        Triple("잠실", "2호선", "8호선") to TransferTip("9-2", null),
+        Triple("합정", "2호선", "6호선") to TransferTip("1-3", null),
+        Triple("공덕", "5호선", "6호선") to TransferTip("4-4", null),
+    )
+    fun transferTip(station: String, fromLine: String, toLine: String): TransferTip? =
+        transferTips[Triple(station, fromLine, toLine)]
+
     /** 역간 평균 소요(초) — 위치 보간용, M2에서 시간표 산출값으로 교체 */
     const val AVG_SEGMENT_SECONDS = 110
 
