@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 
 data class LiveUiState(
     val line: String = "1호선",
-    val upLine: Boolean = true,
+    val upLine: Boolean = false,   // 1호선 기본: 하행(인천·수원 방면)
     val trains: List<Train> = emptyList(),
     val selectedTrainNo: String? = null,
     val secondsSinceRefresh: Int = 0,

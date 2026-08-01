@@ -37,6 +37,7 @@ object StaticData {
     /** 진행 방면 종점명 ("-방면" 표기용). 순환선은 대표 방면 표기. */
     fun terminusOf(line: String, up: Boolean): String {
         if (line == "2호선") return if (up) "을지로 · 성수 방면" else "충정로 · 홍대 방면"
+        if (line == "1호선") return if (up) "도봉산 · 소요산 방면" else "인천 · 수원 방면"
         val seg = segmentOf(line)
         if (seg.isEmpty()) return ""
         val t = if (movesForward(line, up)) seg.last().name else seg.first().name

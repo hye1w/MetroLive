@@ -28,7 +28,7 @@ import com.metrolive.ui.sheets.BoardingPositionSheet
 import com.metrolive.ui.sheets.CongestionSheet
 import com.metrolive.ui.theme.*
 
-private val StationGap = 96.dp
+private val StationGap = 84.dp
 private val TrackX = 44.dp
 
 @Composable
@@ -53,6 +53,20 @@ fun LiveMapScreen(
                 onTrainTap = vm::selectTrain,
                 modifier = Modifier.weight(1f),
             )
+        }
+        if (st.trains.isEmpty() && st.apiError == null && st.secondsSinceRefresh > 3) {
+            Column(
+                Modifier.align(Alignment.Center).padding(horizontal = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("🌙", fontSize = 34.sp)
+                Spacer(Modifier.height(8.dp))
+                Text("지금 운행 중인 열차가 없어요",
+                    fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("막차 시간이 지났거나 실시간 미제공 구간이에요",
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
         }
         st.selectedTrain?.let { train ->
             BottomBoardCard(

@@ -78,12 +78,14 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         sign: Int,
     ): List<Train> {
         val wantUpDown = if (upLine) "0" else "1"
-        val etaByTrain = arrivals.associateBy({ normalizeTrainNo(it.trainNo) }) {
+        val etaByTrain = arrivals.filter { lagSeconds(it.receivedAt) < 300 }
+            .associateBy({ normalizeTrainNo(it.trainNo) }) {
             val raw = it.etaSeconds.toIntOrNull() ?: 0
             (raw - lagSeconds(it.receivedAt)).coerceAtLeast(0)
         }
         val last = (index.size - 1).coerceAtLeast(0).toFloat()
         return positions
+            .filter { lagSeconds(it.receivedAt) < 600 }   // 10분 이상 갱신 없으면 막차 후 잔존 데이터
             .filter { it.upDown == wantUpDown }
             .groupBy { normalizeTrainNo(it.trainNo) }
             .map { (_, rows) -> rows.maxBy { it.receivedAt } }   // 중복 행 → 최신만
@@ -130,6 +132,7 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
             else setOf(if (it) "상행" else "하행", if (it) "0" else "1")
         }
         api.realtimeArrival(stationName = station).list
+            .filter { lagSeconds(it.receivedAt) < 300 }
             .filter { id == null || it.subwayId == id }
             .filter { wantDir == null || it.upDown in wantDir }
             .map {

@@ -196,6 +196,8 @@ fun RouteScreen(
                         ?.trainNo
                     val chosenNo = selTrainNo ?: startTrainNoHolder.value ?: recNo
                     if (selLeg == 0 && selTrainNo != null) startTrainNoHolder.value = selTrainNo
+                    if (selLeg == 0 && startTrainNoHolder.value == null && recNo != null)
+                        startTrainNoHolder.value = recNo   // 추천 열차 기본 = 역별 시간 계산 대상
                     val listState = rememberLazyListState()
                     LaunchedEffect(curLeg, slice.size) {   // 출발역 근처로 초기 스크롤
                         val target = (slice.indexOf(curLeg.from) - 1).coerceAtLeast(0)
@@ -268,7 +270,7 @@ fun RouteScreen(
                         }
                     }
                     if (legTrains.isEmpty()) {
-                        Text("이 방향 실시간 열차 없음 (샘플키 제한 또는 미제공 구간)",
+                        Text("이 방향 운행 중 열차 없음 · 막차가 지났거나 미제공 구간이에요",
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(top = 6.dp))
                     }
@@ -356,7 +358,8 @@ fun RouteScreen(
                             val mids = StaticData.stationsBetween(leg.line, leg.from, leg.to, leg.stops)
                             val canonicalL = StaticData.segmentOf(leg.line)
                             mids.forEachIndexed { mi, name ->
-                                if (mi == 0 || mi == mids.lastIndex) return@forEachIndexed
+                                if (mi == 0) return@forEachIndexed
+                                val isFinal = mi == mids.lastIndex
                                 val hasTrain = i == selLeg && legTrains.any { t ->
                                     canonicalL.getOrNull(t.position.toInt())?.name == name
                                 }
@@ -380,14 +383,22 @@ fun RouteScreen(
                                     Box(Modifier.size(6.dp).clip(CircleShape)
                                         .background(c.copy(alpha = .5f)))
                                     Spacer(Modifier.width(8.dp))
-                                    Text(name, fontSize = 12.sp,
-                                        color = if (hasTrain) c else IosSecondary,
-                                        fontWeight = if (hasTrain) FontWeight.Bold else FontWeight.Normal)
+                                    Text(name,
+                                        fontSize = if (isFinal) 14.sp else 12.sp,
+                                        color = if (isFinal) IosLabel
+                                                else if (hasTrain) c else IosSecondary,
+                                        fontWeight = if (isFinal || hasTrain) FontWeight.Bold
+                                                     else FontWeight.Normal)
                                     etaHere?.let { sec ->
                                         Spacer(Modifier.weight(1f))
-                                        Text("약 %d:%02d 후".format(sec / 60, sec % 60),
-                                            fontSize = 11.sp, color = IosBlue,
-                                            fontWeight = FontWeight.Bold)
+                                        val clock = if (isFinal) {
+                                            val t = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
+                                                .format(java.util.Date(System.currentTimeMillis() + sec * 1000L))
+                                            " · ${t} 도착"
+                                        } else ""
+                                        Text("약 %d:%02d 후%s".format(sec / 60, sec % 60, clock),
+                                            fontSize = if (isFinal) 12.sp else 11.sp,
+                                            color = IosBlue, fontWeight = FontWeight.Bold)
                                     }
                                     if (hasTrain) {
                                         Spacer(Modifier.width(6.dp))

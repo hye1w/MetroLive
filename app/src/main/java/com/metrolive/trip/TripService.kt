@@ -152,6 +152,7 @@ class TripService : Service() {
             .also { b ->
                 val total = StaticData.segmentOf(leg?.line ?: "1호선").size
                 if (left in 0..total) b.setProgress(total, (total - left).coerceIn(0, total), false)
+                else b.setProgress(0, 0, true)   // 위치 확인 중에도 진행형 유지 (바 알림 승격 조건)
             }
             .setOngoing(true).setSilent(true)
             .build()

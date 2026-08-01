@@ -39,6 +39,11 @@ fun SettingsScreen() {
         // ── API 키
         SettingCard("실시간 API 키") {
             Text(
+                "사용 중 키: ${ApiKeys.current().take(10)}…${ApiKeys.current().takeLast(4)}",
+                fontSize = 11.sp, color = IosSecondary,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
                 if (ApiKeys.isSample()) "현재 샘플키 사용 중 (응답 최대 5건 제한)"
                 else "개인 키 사용 중 · 제한 해제됨",
                 fontSize = 12.sp,
@@ -61,7 +66,7 @@ fun SettingsScreen() {
                 TextButton(
                     onClick = { ApiKeys.set(""); key = ""; saved = false },
                     modifier = Modifier.weight(1f),
-                ) { Text("샘플키로", color = IosSecondary) }
+                ) { Text("기본 키로 초기화", color = IosSecondary, fontSize = 12.sp) }
             }
             Text(
                 "재빌드 없이 즉시 적용됩니다. 키 발급: data.seoul.go.kr → 인증키 신청 → 실시간 지하철",

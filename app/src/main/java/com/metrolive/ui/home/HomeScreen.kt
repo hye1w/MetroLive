@@ -98,6 +98,25 @@ fun HomeScreen(
             Text("도착역 검색", color = IosSecondary, fontSize = 15.sp)
         }
 
+        // 전체 노선도 (서울교통공사 사이버스테이션)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "🗺  전체 노선도 보기",
+            fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = IosBlue,
+            modifier = Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp)).background(IosCard)
+                .border(0.5.dp, IosSeparator, RoundedCornerShape(14.dp))
+                .clickable {
+                    ctx.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://www.seoulmetro.co.kr/kr/cyberStation.do"),
+                        )
+                    )
+                }
+                .padding(horizontal = 16.dp, vertical = 13.dp),
+        )
+
         // ── 2. 출근/퇴근 경로 (즐겨찾기와 별개)
         Spacer(Modifier.height(22.dp))
         SectionTitle("출근 · 퇴근")
@@ -118,20 +137,34 @@ fun HomeScreen(
             SectionTitle("즐겨찾는 역")
             val favs = store.favoriteStations()
             if (favs.isEmpty()) EmptyHint("역 검색에서 ☆ 을 눌러 추가하세요")
-            else FlowChips(favs.map { st ->
-                Chip("$st  ${Network.linesOf[st]?.joinToString(" ") { it.first().toString() } ?: ""}") {
-                    onRoute(origin, st)
+            else favs.chunked(2).forEach { row ->
+                Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { st -> FavStationChip(st) { onRoute(origin, st) } }
                 }
-            })
+            }
 
             // ── 4. 경로 즐겨찾기 (예: 교대→군자)
             Spacer(Modifier.height(22.dp))
             SectionTitle("즐겨찾는 경로")
             val favRoutes = store.favoriteRoutes()
             if (favRoutes.isEmpty()) EmptyHint("경로 화면에서 ☆ 을 누르거나 아래 + 로 추가")
-            else FlowChips(favRoutes.map { r ->
-                Chip("${r.from} → ${r.to}", color = IosBlue) { onRoute(r.from, r.to) }
-            })
+            else favRoutes.chunked(2).forEach { row ->
+                Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { r ->
+                        Text(
+                            "${r.from} → ${r.to}",
+                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(IosBlue)
+                                .clickable { onRoute(r.from, r.to) }
+                                .padding(horizontal = 14.dp, vertical = 9.dp),
+                        )
+                    }
+                }
+            }
             FlowChips(listOf(Chip("＋ 경로 추가") { commuteFrom = null; pickerFor = "route" }))
         }
     }
@@ -182,6 +215,33 @@ private fun EmptyHint(t: String) =
     Text(t, fontSize = 13.sp, color = IosSecondary,
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
             .background(IosCard).padding(14.dp))
+
+@Composable
+private fun FavStationChip(station: String, onTap: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(IosCard)
+            .border(0.5.dp, IosSeparator, RoundedCornerShape(20.dp))
+            .clickable(onClick = onTap)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(station, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Spacer(Modifier.width(6.dp))
+        Network.linesOf[station]?.take(4)?.forEach { l ->
+            Box(
+                Modifier.padding(horizontal = 1.dp).size(18.dp)
+                    .clip(CircleShape)
+                    .background(Color(Network.lineColors[l]!!)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(l.first().toString(), color = Color.White,
+                    fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
 
 private data class Chip(val text: String, val color: Color? = null, val onTap: () -> Unit)
 
