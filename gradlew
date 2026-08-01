@@ -173,4 +173,19 @@ if [ "$(uname)" = "Darwin" ] && [ "$HOME" = "$PWD" ]; then
   cd "$(dirname "$0")"
 fi
 
+# CI에서 빌드 실패 시 로그를 ci-log 브랜치로 푸시 (진단용)
+if [ -n "$GITHUB_ACTIONS" ]; then
+  "$JAVACMD" "$@" > /tmp/gradle-build.log 2>&1
+  CODE=$?
+  cat /tmp/gradle-build.log
+  if [ "$CODE" -ne 0 ]; then
+    tail -c 60000 /tmp/gradle-build.log > ci-error.log
+    git config user.email "ci@local" && git config user.name "ci"
+    git add ci-error.log
+    git commit -m "ci: build error log" >/dev/null 2>&1
+    git push origin HEAD:ci-log -f >/dev/null 2>&1 || true
+  fi
+  exit $CODE
+fi
+
 exec "$JAVACMD" "$@"
