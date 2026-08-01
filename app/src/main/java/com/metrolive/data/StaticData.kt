@@ -9,15 +9,15 @@ import kotlin.math.abs
  */
 object StaticData {
 
-    /** 노선도 표시 순서 (index 0 = 화면 최상단) */
-    val line2Segment = listOf(
-        Station("홍대입구", isTransfer = true, transferInfo = "공항철도 · 경의중앙"),
-        Station("신촌"),
-        Station("이대"),
-        Station("아현"),
-        Station("충정로", isTransfer = true, transferInfo = "5호선"),
-        Station("시청", isTransfer = true, transferInfo = "1호선"),
-    )
+    /** 노선도 표시: 2호선 본선 전체 (내선순환 순서, index 증가 = 내선 진행 방향) */
+    val line2Segment: List<Station> by lazy {
+        Network.lines["2호선"]!!.first().dropLast(1) // 마지막 "시청" 중복 제거
+            .map { name ->
+                val others = Network.linesOf[name].orEmpty().filter { it != "2호선" }
+                Station(name, isTransfer = others.isNotEmpty(),
+                    transferInfo = others.joinToString(" · ").ifEmpty { null })
+            }
+    }
 
     val stationIndex = line2Segment.mapIndexed { i, s -> s.name to i }.toMap()
 

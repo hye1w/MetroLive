@@ -52,8 +52,8 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
                     trainNo = row.trainNo,
                     destination = row.destination.removeSuffix("행") + "행",
                     isExpress = row.express == "1",
-                    // 내선(화면 위 방향) 진행: index 감소 방향으로 보정
-                    position = (idx - lagAdvance).coerceIn(0f, StaticData.line2Segment.lastIndex.toFloat()),
+                    // 내선순환 진행 = index 증가 방향
+                    position = (idx + lagAdvance).coerceIn(0f, StaticData.line2Segment.lastIndex.toFloat()),
                     isStopped = stopped,
                     etaSeconds = etaByTrain[row.trainNo] ?: -1,
                 )

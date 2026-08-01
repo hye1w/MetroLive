@@ -49,8 +49,8 @@ class TripService : Service() {
             .collect { trains ->
                 val me = trains.firstOrNull { it.trainNo == trainNo } ?: return@collect
                 val curIdx = me.position.toInt()
-                val left = curIdx - destIdx                 // 남은 정거장 수 (내선: index 감소)
-                val next = StaticData.line2Segment.getOrNull(curIdx - 1)?.name ?: destStation
+                val left = destIdx - curIdx                 // 남은 정거장 수 (내선: index 증가)
+                val next = StaticData.line2Segment.getOrNull(curIdx + 1)?.name ?: destStation
 
                 when {
                     left <= 0 -> { notifyArrived(); stopSession() }
