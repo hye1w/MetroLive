@@ -30,7 +30,6 @@ import com.metrolive.ui.route.RouteScreen
 import com.metrolive.ui.settings.SettingsScreen
 import com.metrolive.data.StationCoords
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
 import android.annotation.SuppressLint
 import com.metrolive.ui.theme.*
 
@@ -114,7 +113,7 @@ class MainActivity : ComponentActivity() {
     private fun locateNearest(onResult: (String, Int) -> Unit) {
         runCatching {
             val client = LocationServices.getFusedLocationProviderClient(this)
-            client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+            client.lastLocation
                 .addOnSuccessListener { loc ->
                     val hit = loc?.let { StationCoords.nearest(it.latitude, it.longitude) }
                     if (hit != null) onResult(hit.first, hit.second)

@@ -35,7 +35,7 @@ fun SettingsScreen() {
         Spacer(Modifier.height(20.dp))
 
         // ── API 키
-        Card("실시간 API 키") {
+        SettingCard("실시간 API 키") {
             Text(
                 if (ApiKeys.isSample()) "현재 샘플키 사용 중 (응답 최대 5건 제한)"
                 else "개인 키 사용 중 · 제한 해제됨",
@@ -70,7 +70,7 @@ fun SettingsScreen() {
         Spacer(Modifier.height(16.dp))
 
         // ── 기본 출발역
-        Card("기본 출발역") {
+        SettingCard("기본 출발역") {
             Text(store.origin(), fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Text("홈 화면 상단에서 변경하거나 📍 버튼으로 현 위치 최근접 역 설정",
                 style = MaterialTheme.typography.labelSmall)
@@ -79,7 +79,7 @@ fun SettingsScreen() {
         Spacer(Modifier.height(16.dp))
 
         // ── 정보
-        Card("앱 정보") {
+        SettingCard("앱 정보") {
             Text("지하철 라이브 · 개인용", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             Text(
                 "데이터: 서울 열린데이터광장(TOPIS). 혼잡도는 통계 근사, 문/계단 방향·환승칸은 " +
@@ -91,7 +91,7 @@ fun SettingsScreen() {
 }
 
 @Composable
-private fun Card(title: String, content: @Composable ColumnScope.() -> Unit) {
+private fun SettingCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(IosCard)
             .border(0.5.dp, IosSeparator, RoundedCornerShape(18.dp)).padding(16.dp),
