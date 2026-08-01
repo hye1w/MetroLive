@@ -66,6 +66,23 @@ object StaticData {
     fun transferTip(station: String, fromLine: String, toLine: String): TransferTip? =
         transferTips[Triple(station, fromLine, toLine)]
 
+    /** 구간의 전체 역 목록 (from→to 순서). 2호선은 실제 경유 방향(정거장 수)으로 판별 */
+    fun stationsBetween(line: String, from: String, to: String, expectedStops: Int = -1): List<String> {
+        val idx = indexOf(line)
+        val names = segmentOf(line).map { it.name }
+        val a = idx[from] ?: return emptyList()
+        val b = idx[to] ?: return emptyList()
+        val linear = if (a <= b) names.subList(a, b + 1).toList()
+                     else names.subList(b, a + 1).reversed()
+        if (line != "2호선" || expectedStops < 0 || linear.size - 1 == expectedStops) return linear
+        // 순환 반대 방향 (시청 경계 넘어가는 경로)
+        val wrap = if (a <= b)
+            (a downTo 0).map { names[it] } + (names.lastIndex downTo b).map { names[it] }
+        else
+            (a..names.lastIndex).map { names[it] } + (0..b).map { names[it] }
+        return if (wrap.size - 1 == expectedStops) wrap else linear
+    }
+
     /** from→to 이동에 필요한 상/하행(2호선은 내선/외선) 판정 */
     fun legUp(line: String, from: String, to: String): Boolean {
         val idx = indexOf(line)
