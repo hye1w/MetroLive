@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.metrolive.BuildConfig
+import com.metrolive.data.Network
 import com.metrolive.data.StaticData
 import com.metrolive.data.Train
 import com.metrolive.ui.sheets.BoardingPositionSheet
@@ -35,67 +37,108 @@ fun LiveMapScreen(
     onStartTrip: (Train) -> Unit,
 ) {
     val st by vm.state.collectAsState()
+    val lineColor = Color(Network.lineColors[st.line] ?: 0xFF00A84D)
 
     Box(Modifier.fillMaxSize().background(IosBg)) {
         Column(Modifier.fillMaxSize()) {
-            Header(st.secondsSinceRefresh)
+            Header(st, lineColor, onLine = vm::selectLine, onDirection = vm::setDirection)
             TrainMap(
+                line = st.line,
+                lineColor = lineColor,
+                baseStation = st.baseStation,
                 trains = st.trains,
                 selectedNo = st.selectedTrainNo,
-                onTrainTap = vm::selectTrain,   // C4: 카드 탭으로 열차 변경
+                onTrainTap = vm::selectTrain,
                 modifier = Modifier.weight(1f),
             )
         }
         st.selectedTrain?.let { train ->
             BottomBoardCard(
-                train = train,
-                onCongestion = vm::openCongestion,
-                onBoard = vm::requestBoard,
+                train = train, baseStation = st.baseStation,
+                onCongestion = vm::openCongestion, onBoard = vm::requestBoard,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
     }
 
     st.congestion?.let { CongestionSheet(it, boarding = st.boarding, onDismiss = vm::closeCongestion) }
-
     if (st.showBoardingSheet) {
         BoardingPositionSheet(
             initial = st.boarding,
-            onConfirm = { pos ->
-                vm.confirmBoarding(pos)
-                st.selectedTrain?.let(onStartTrip)
-            },
+            onConfirm = { pos -> vm.confirmBoarding(pos); st.selectedTrain?.let(onStartTrip) },
             onDismiss = { vm.confirmBoarding(st.boarding) },
         )
     }
 }
 
 @Composable
-private fun Header(sinceRefresh: Int) {
-    Column(Modifier.statusBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("2호선", style = MaterialTheme.typography.headlineLarge)
+private fun Header(
+    st: LiveUiState, lineColor: Color,
+    onLine: (String) -> Unit, onDirection: (Boolean) -> Unit,
+) {
+    Column(Modifier.statusBarsPadding().padding(vertical = 8.dp)) {
+        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(st.line, style = MaterialTheme.typography.headlineLarge)
             Spacer(Modifier.width(8.dp))
-            Box(Modifier.size(12.dp).clip(CircleShape).background(Line2Green))
+            Box(Modifier.size(12.dp).clip(CircleShape).background(lineColor))
+            Spacer(Modifier.weight(1f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(IosRed))
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    if (st.secondsSinceRefresh < 2) "LIVE" else "LIVE ${st.secondsSinceRefresh}s",
+                    color = IosRed, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                )
+            }
         }
-        Text("내 위치 · 시청역 도보 4분", style = MaterialTheme.typography.labelSmall)
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(7.dp).clip(CircleShape).background(IosRed))
-            Spacer(Modifier.width(6.dp))
-            Text("LIVE", color = IosRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(6.dp))
-            Text(
-                if (sinceRefresh < 2) "방금 갱신" else "${sinceRefresh}초 전 갱신",
-                style = MaterialTheme.typography.labelSmall,
-            )
+        // 노선 선택 칩 (1~9호선)
+        Row(
+            Modifier.horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Network.lines.keys.forEach { line ->
+                val c = Color(Network.lineColors[line]!!)
+                val on = line == st.line
+                Text(
+                    line.removeSuffix("호선"),
+                    color = if (on) Color.White else c,
+                    fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (on) c else IosCard)
+                        .border(1.5.dp, c, CircleShape)
+                        .clickable { onLine(line) }
+                        .padding(horizontal = 13.dp, vertical = 8.dp),
+                )
+            }
+        }
+        // 방향 전환
+        Row(
+            Modifier.padding(horizontal = 20.dp).fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp)).background(Color(0x1F767680)).padding(2.dp),
+        ) {
+            listOf(true to if (st.line == "2호선") "내선순환" else "상행",
+                   false to if (st.line == "2호선") "외선순환" else "하행").forEach { (up, label) ->
+                val on = st.upLine == up
+                Text(
+                    label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    color = if (on) IosLabel else IosSecondary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (on) Color.White else Color.Transparent)
+                        .clickable { onDirection(up) }
+                        .padding(vertical = 7.dp),
+                )
+            }
         }
         if (BuildConfig.SEOUL_API_KEY == "sample") {
-            Spacer(Modifier.height(6.dp))
             Text(
-                "샘플키 모드 · 응답 최대 5건으로 제한됨 (실제 키 발급 후 자동 해제)",
+                "샘플키 모드 · 응답 최대 5건 제한 — 열차가 안 보일 수 있어요",
                 fontSize = 11.sp, color = IosOrange, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(IosOrange.copy(alpha = .12f))
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             )
@@ -105,34 +148,26 @@ private fun Header(sinceRefresh: Int) {
 
 @Composable
 private fun TrainMap(
-    trains: List<Train>,
-    selectedNo: String?,
-    onTrainTap: (String) -> Unit,
-    modifier: Modifier,
+    line: String, lineColor: Color, baseStation: String,
+    trains: List<Train>, selectedNo: String?,
+    onTrainTap: (String) -> Unit, modifier: Modifier,
 ) {
-    val stations = StaticData.line2Segment
-    Box(modifier.verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 200.dp)) {
-        // 트랙
+    val stations = StaticData.segmentOf(line)
+    Box(modifier.verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 220.dp)) {
         Box(
-            Modifier
-                .padding(start = TrackX)
-                .width(6.dp)
-                .height(StationGap * (stations.size - 1) + 24.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(Line2Green)
+            Modifier.padding(start = TrackX).width(6.dp)
+                .height(StationGap * (stations.size - 1).coerceAtLeast(1) + 24.dp)
+                .clip(RoundedCornerShape(3.dp)).background(lineColor)
         )
-        // 역
         stations.forEachIndexed { i, s ->
             Row(
                 Modifier.offset(y = StationGap * i).padding(start = TrackX - 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
-                    Modifier
-                        .size(if (s.isTransfer) 20.dp else 18.dp)
-                        .clip(CircleShape)
-                        .background(IosCard)
-                        .border(4.dp, if (s.isTransfer) IosLabel else Line2Green, CircleShape)
+                    Modifier.size(if (s.isTransfer) 20.dp else 18.dp)
+                        .clip(CircleShape).background(IosCard)
+                        .border(4.dp, if (s.isTransfer) IosLabel else lineColor, CircleShape)
                 )
                 Spacer(Modifier.width(14.dp))
                 Column {
@@ -141,28 +176,26 @@ private fun TrainMap(
                 }
             }
         }
-        // 열차 카드 (탭 = 선택)
         trains.forEach { t ->
             val y by animateFloatAsState(t.position, tween(1200), label = "trainY")
             TrainCard(
-                train = t,
+                train = t, lineColor = lineColor, baseStation = baseStation,
                 selected = t.trainNo == selectedNo,
                 onTap = { onTrainTap(t.trainNo) },
-                modifier = Modifier
-                    .offset(y = StationGap * y)
-                    .padding(start = 108.dp, end = 16.dp)
-                    .fillMaxWidth(),
+                modifier = Modifier.offset(y = StationGap * y)
+                    .padding(start = 118.dp, end = 16.dp).fillMaxWidth(),
             )
         }
     }
 }
 
 @Composable
-private fun TrainCard(train: Train, selected: Boolean, onTap: () -> Unit, modifier: Modifier) {
+private fun TrainCard(
+    train: Train, lineColor: Color, baseStation: String,
+    selected: Boolean, onTap: () -> Unit, modifier: Modifier,
+) {
     Row(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(GlassWhite)
+        modifier.clip(RoundedCornerShape(16.dp)).background(GlassWhite)
             .border(
                 if (selected) 1.5.dp else 0.5.dp,
                 if (selected) IosBlue else Color.White.copy(alpha = .7f),
@@ -172,61 +205,49 @@ private fun TrainCard(train: Train, selected: Boolean, onTap: () -> Unit, modifi
             .padding(horizontal = 13.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(Line2Green),
-            contentAlignment = Alignment.Center,
-        ) { Text("🚇", fontSize = 16.sp) }
+        Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(lineColor),
+            contentAlignment = Alignment.Center) { Text("🚇", fontSize = 16.sp) }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(train.destination, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 if (train.isExpress) {
                     Spacer(Modifier.width(5.dp))
-                    Text(
-                        "급행", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                    Text("급행", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(IosRed)
-                            .padding(horizontal = 5.dp, vertical = 1.dp),
-                    )
+                            .padding(horizontal = 5.dp, vertical = 1.dp))
                 }
             }
-            Text(
-                "열차 ${train.trainNo} · ${if (train.isStopped) "정차" else "주행 중"}",
-                style = MaterialTheme.typography.labelSmall,
-            )
+            Text("열차 ${train.trainNo} · ${if (train.isStopped) "정차" else "주행 중"}",
+                style = MaterialTheme.typography.labelSmall)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(train.etaSeconds.mmss(), color = IosBlue, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-            Text("시청 도착", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
+            Text(train.etaSeconds.mmss(), color = IosBlue,
+                fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            Text("$baseStation 도착", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
         }
     }
 }
 
-/** 하단 카드 — C4: [탑승 시작] 버튼만. 이전/다음 열차 문구 없음 */
 @Composable
 private fun BottomBoardCard(
-    train: Train,
-    onCongestion: () -> Unit,
-    onBoard: () -> Unit,
-    modifier: Modifier,
+    train: Train, baseStation: String,
+    onCongestion: () -> Unit, onBoard: () -> Unit, modifier: Modifier,
 ) {
     Column(
-        modifier
-            .padding(14.dp)
+        modifier.padding(14.dp).padding(bottom = 62.dp)
             .navigationBarsPadding()
-            .clip(RoundedCornerShape(22.dp))
-            .background(GlassWhite)
+            .clip(RoundedCornerShape(22.dp)).background(GlassWhite)
             .border(1.dp, Color.White.copy(alpha = .8f), RoundedCornerShape(22.dp))
             .padding(18.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("선택한 열차", color = IosBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            Text(
-                "탑승 여유 ✓", color = Line2Green, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            Text("탑승 여유 ✓", color = Line2Green, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clip(RoundedCornerShape(20.dp))
                     .background(Line2Green.copy(alpha = .12f))
-                    .padding(horizontal = 9.dp, vertical = 3.dp),
-            )
+                    .padding(horizontal = 9.dp, vertical = 3.dp))
         }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.Bottom) {
@@ -234,19 +255,20 @@ private fun BottomBoardCard(
             Spacer(Modifier.width(8.dp))
             Text("열차 ${train.trainNo}", style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.weight(1f))
-            Text(train.etaSeconds.mmss(), color = IosBlue, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+            Text(train.etaSeconds.mmss(), color = IosBlue, fontSize = 21.sp,
+                fontWeight = FontWeight.ExtraBold)
         }
-        Text("시청 ${train.platform} · 다른 열차는 위 카드를 탭해 선택", style = MaterialTheme.typography.labelSmall)
+        Text("$baseStation ${train.platform} · 다른 열차는 위 카드를 탭해 선택",
+            style = MaterialTheme.typography.labelSmall)
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = onCongestion, modifier = Modifier.weight(1f)) {
                 Text("혼잡도 보기", fontWeight = FontWeight.Bold)
             }
-            Button(
-                onClick = onBoard,
-                modifier = Modifier.weight(2f).height(48.dp),
-                shape = RoundedCornerShape(13.dp),
-            ) { Text("탑승 시작", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+            Button(onClick = onBoard, modifier = Modifier.weight(2f).height(48.dp),
+                shape = RoundedCornerShape(13.dp)) {
+                Text("탑승 시작", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
         }
     }
 }

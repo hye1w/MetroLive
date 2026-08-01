@@ -87,20 +87,15 @@ fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
                 }
             })
 
-            // ── 4. 노선 즐겨찾기
+            // ── 4. 경로 즐겨찾기 (예: 교대→군자)
             Spacer(Modifier.height(22.dp))
-            SectionTitle("즐겨찾는 노선")
-            FlowChips(Network.lines.keys.map { line ->
-                val on = store.favoriteLines().contains(line)
-                Chip(
-                    text = line,
-                    color = if (on) Color(Network.lineColors[line]!!) else null,
-                ) { store.toggleLine(line); refresh++ }
+            SectionTitle("즐겨찾는 경로")
+            val favRoutes = store.favoriteRoutes()
+            if (favRoutes.isEmpty()) EmptyHint("경로 화면에서 ☆ 을 누르거나 아래 + 로 추가")
+            else FlowChips(favRoutes.map { r ->
+                Chip("${r.from} → ${r.to}", color = IosBlue) { onRoute(r.from, r.to) }
             })
-            Text(
-                "노선을 탭해 즐겨찾기 (색 = 등록됨) · 실시간 탭에서 해당 노선 열람",
-                style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 6.dp),
-            )
+            FlowChips(listOf(Chip("＋ 경로 추가") { commuteFrom = null; pickerFor = "route" }))
         }
     }
 
@@ -109,6 +104,7 @@ fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
         StationPickerSheet(
             title = when (target) {
                 "dest" -> "도착역 선택"
+                "route" -> if (commuteFrom == null) "즐겨찾는 경로 · 출발역" else "즐겨찾는 경로 · 도착역"
                 else -> if (commuteFrom == null) "${if (target == "work") "출근" else "퇴근"} 출발역"
                         else "${if (target == "work") "출근" else "퇴근"} 도착역"
             },
@@ -118,6 +114,13 @@ fun HomeScreen(onRoute: (from: String, to: String) -> Unit) {
         ) { picked ->
             when (target) {
                 "dest" -> { pickerFor = null; onRoute(CURRENT_STATION, picked) }
+                "route" -> {
+                    if (commuteFrom == null) commuteFrom = picked
+                    else {
+                        store.toggleRoute(commuteFrom!!, picked)
+                        pickerFor = null; commuteFrom = null; refresh++
+                    }
+                }
                 else -> {
                     if (commuteFrom == null) commuteFrom = picked
                     else {

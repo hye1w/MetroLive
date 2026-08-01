@@ -4,6 +4,7 @@ import android.Manifest
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -45,6 +46,15 @@ class MainActivity : ComponentActivity() {
                 var tripCardVisible by remember { mutableStateOf(expandTripCard) }
                 val vm: LiveMapViewModel = viewModel()
                 val st by vm.state.collectAsState()
+
+                // 뒤로가기: 열린 화면부터 순서대로 닫고, 홈에서는 앱 종료(기본 동작)
+                BackHandler(enabled = tripCardVisible || route != null || tab != 0) {
+                    when {
+                        tripCardVisible -> tripCardVisible = false
+                        route != null -> route = null
+                        tab != 0 -> tab = 0
+                    }
+                }
 
                 Box(Modifier.fillMaxSize().background(IosBg)) {
                     when (tab) {

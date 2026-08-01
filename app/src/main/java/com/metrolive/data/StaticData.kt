@@ -9,17 +9,23 @@ import kotlin.math.abs
  */
 object StaticData {
 
-    /** 노선도 표시: 2호선 본선 전체 (내선순환 순서, index 증가 = 내선 진행 방향) */
-    val line2Segment: List<Station> by lazy {
-        Network.lines["2호선"]!!.first().dropLast(1) // 마지막 "시청" 중복 제거
-            .map { name ->
-                val others = Network.linesOf[name].orEmpty().filter { it != "2호선" }
-                Station(name, isTransfer = others.isNotEmpty(),
-                    transferInfo = others.joinToString(" · ").ifEmpty { null })
-            }
+    /** 노선별 표시 구간 (본선 첫 구간, 순환선은 중복 종점 제거) */
+    private val segCache = mutableMapOf<String, List<Station>>()
+    fun segmentOf(line: String): List<Station> = segCache.getOrPut(line) {
+        val seg = Network.lines[line]?.first() ?: emptyList()
+        val names = if (seg.size > 1 && seg.first() == seg.last()) seg.dropLast(1) else seg
+        names.map { name ->
+            val others = Network.linesOf[name].orEmpty().filter { it != line }
+            Station(name, isTransfer = others.isNotEmpty(),
+                transferInfo = others.joinToString(" · ").ifEmpty { null })
+        }
     }
 
-    val stationIndex = line2Segment.mapIndexed { i, s -> s.name to i }.toMap()
+    fun indexOf(line: String): Map<String, Int> =
+        segmentOf(line).mapIndexed { i, s -> s.name to i }.toMap()
+
+    val line2Segment: List<Station> get() = segmentOf("2호선")
+    val stationIndex: Map<String, Int> get() = indexOf("2호선")
 
     /** 역간 평균 소요(초) — 위치 보간용, M2에서 시간표 산출값으로 교체 */
     const val AVG_SEGMENT_SECONDS = 110

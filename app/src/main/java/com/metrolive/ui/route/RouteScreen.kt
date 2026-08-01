@@ -17,6 +17,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.metrolive.data.FavoritesStore
+import com.metrolive.data.MetroRepository
 import com.metrolive.data.Network
 import com.metrolive.ui.theme.*
 
@@ -27,15 +30,26 @@ fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize().background(IosBg).statusBarsPadding()) {
         // 헤더
+        val ctx = LocalContext.current
+        val store = remember { FavoritesStore(ctx) }
+        var fav by remember { mutableStateOf(store.isFavoriteRoute(from, to)) }
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Text("‹", fontSize = 30.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
             Column(Modifier.padding(start = 4.dp)) {
                 Text("$from → $to", style = MaterialTheme.typography.titleMedium)
-                Text("역간 2분 · 환승 4분 근사 기준 (실시간 반영 예정)",
+                Text("역간 2분 · 환승 4분 근사 기준",
                     style = MaterialTheme.typography.labelSmall)
             }
+            Spacer(Modifier.weight(1f))
+            Text(
+                if (fav) "★" else "☆", fontSize = 24.sp,
+                color = if (fav) IosYellow else IosSecondary,
+                modifier = Modifier.clickable {
+                    fav = store.toggleRoute(from, to)
+                }.padding(horizontal = 14.dp, vertical = 4.dp),
+            )
         }
 
         if (variants.isEmpty()) {
@@ -79,7 +93,42 @@ fun RouteScreen(from: String, to: String, onBack: () -> Unit) {
                 Text("환승 ${v.transfers}회 · ${v.legs.sumOf { it.stops }}개 역",
                     fontSize = 13.sp, color = IosSecondary, modifier = Modifier.padding(bottom = 6.dp))
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(14.dp))
+
+            // 출발역 실시간 도착 (첫 구간 노선 기준)
+            val firstLeg = v.legs.first()
+            var arrivals by remember(from, firstLeg.line) {
+                mutableStateOf<List<MetroRepository.ArrivalInfo>>(emptyList())
+            }
+            LaunchedEffect(from, firstLeg.line) {
+                arrivals = MetroRepository().arrivalsFor(from, firstLeg.line)
+            }
+            if (arrivals.isNotEmpty()) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(IosCard)
+                        .border(0.5.dp, IosSeparator, RoundedCornerShape(18.dp)).padding(16.dp),
+                ) {
+                    Text("$from 실시간 도착 · ${firstLeg.line}",
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IosSecondary)
+                    Spacer(Modifier.height(6.dp))
+                    arrivals.forEach { a ->
+                        Row(Modifier.padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(a.destination + "행", fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.width(8.dp))
+                            Text(a.message, fontSize = 11.sp, color = IosSecondary,
+                                modifier = Modifier.weight(1f), maxLines = 1)
+                            Text(
+                                if (a.etaSeconds <= 0) "곧 도착"
+                                else "%d:%02d".format(a.etaSeconds / 60, a.etaSeconds % 60),
+                                fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = IosBlue,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
 
             // 구간 타임라인
             v.legs.forEachIndexed { i, leg ->

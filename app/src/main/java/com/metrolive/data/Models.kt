@@ -89,5 +89,6 @@ data class RealtimeArrivalRow(
     @SerialName("barvlDt") val etaSeconds: String = "0",
     @SerialName("arvlMsg2") val positionMsg: String = "",
     @SerialName("updnLine") val upDown: String = "",
+    @SerialName("subwayId") val subwayId: String = "",   // 1001=1호선 … 1009=9호선
     @SerialName("recptnDt") val receivedAt: String = "",
 )
