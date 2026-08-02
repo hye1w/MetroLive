@@ -52,18 +52,8 @@ fun TripScreen(onClose: () -> Unit) {
             Column(Modifier.padding(start = 4.dp)) {
                 Text("경로 안내 중", style = MaterialTheme.typography.titleMedium)
                 info?.let { inf ->
-                    // 남은 시간 추정: 현 구간 잔여 + 이후 구간(역×2분 + 환승 4분)
-                    val futureSec = legs.drop(inf.legIdx + 1).sumOf { l ->
-                        (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
-                    }
-                    val totalSec = (inf.left.coerceAtLeast(0)) * 120 + futureSec
-                    val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
-                        .format(java.util.Date(System.currentTimeMillis() + totalSec * 1000L))
-                    Text(
-                        "다음역 ${inf.next} · ${if (inf.left > 0) "${inf.left}정거장" else "확인 중"}" +
-                        " · ${legs.lastOrNull()?.to ?: inf.dest} ${clock} 도착 예정",
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+                    Text("${inf.line} · ${legs.lastOrNull()?.to ?: inf.dest} 방면",
+                        style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -129,8 +119,9 @@ fun TripScreen(onClose: () -> Unit) {
                     Column(Modifier.padding(bottom = 4.dp)) {
                         Text("${legs.lastOrNull()?.to ?: inf.dest} · $clock 도착 예정",
                             fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        val leftShow = liveLeft ?: inf.left
                         Text("다음역 ${inf.next}" +
-                            if (inf.left > 0) " · ${inf.left}정거장 남음" else "",
+                            if (leftShow > 0) " · ${leftShow}정거장 남음" else "",
                             style = MaterialTheme.typography.labelSmall)
                     }
                 }
