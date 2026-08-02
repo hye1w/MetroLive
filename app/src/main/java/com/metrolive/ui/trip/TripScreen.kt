@@ -56,7 +56,7 @@ fun TripScreen(onClose: () -> Unit) {
                     val futureSec = legs.drop(inf.legIdx + 1).sumOf { l ->
                         (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
                     }
-                    val totalSec = ((liveLeft ?: inf.left).coerceAtLeast(0)) * 120 + futureSec
+                    val totalSec = (inf.left.coerceAtLeast(0)) * 120 + futureSec
                     val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
                         .format(java.util.Date(System.currentTimeMillis() + totalSec * 1000L))
                     Text(
