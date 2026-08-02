@@ -124,7 +124,7 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
                 api.realtimeArrival(stationName = baseStation).list,
                 index, upLine, sign,
             )
-        }.getOrDefault(emptyList()).getOrDefault(emptyList())
+        }.getOrDefault(emptyList())
 
     private fun lagSeconds(recptnDt: String): Int = runCatching {
         val t = dtFormat.parse(recptnDt)?.time ?: return 0

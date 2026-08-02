@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.metrolive.data.BoardingPosition
 import com.metrolive.data.MetroRepository
+import com.metrolive.data.StaticData
 import com.metrolive.data.Train
 import com.metrolive.data.TrainCongestion
 import kotlinx.coroutines.Job
