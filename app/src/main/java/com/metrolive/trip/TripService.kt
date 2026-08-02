@@ -158,14 +158,13 @@ class TripService : Service() {
             leg?.line ?: "", next, leg?.to ?: "", left, legIdx, legs.size,
             alerting = false, trainNo = trainNo))
         val ticker = "다음역 $next · ${leg?.to}까지 ${left}정거장"
-        val track = leg?.let {
-            val total = StaticData.stationsBetween(it.line, it.from, it.to).size - 1
-            if (total > 0 && left >= 0) {
-                val leftDisp = left.coerceIn(0, total)
-                val doneN = total - leftDisp
-                "${it.from} ●" + "━".repeat(doneN.coerceAtMost(8)) + "🚇" +
-                "─".repeat(leftDisp.coerceAtMost(8)) + "○ ${it.to}"
-            } else null
+        val track = leg?.takeIf { left >= 0 }?.let {
+            val total = (StaticData.stationsBetween(it.line, it.from, it.to).size - 1)
+                .coerceAtLeast(left).coerceAtLeast(1)
+            val leftDisp = left.coerceIn(0, total)
+            val doneN = total - leftDisp
+            "${it.from} ●" + "━".repeat(doneN.coerceAtMost(8)) + "🚇" +
+            "─".repeat(leftDisp.coerceAtMost(8)) + "○ ${it.to}"
         }
         val title = if (left > 0) "다음역 $next · ${leg?.to}까지 ${left}정거장"
                     else "경로 안내 중 (${legIdx + 1}/${legs.size} 구간)"
@@ -216,7 +215,8 @@ class TripService : Service() {
             }
         }
         return base(CH_ALERT)
-            .setContentTitle(if (isFinal) "다음 역에서 내리세요! — 1정거장 전" else "다음 역에서 환승! — 1정거장 전")
+            .setLargeIcon(trainLargeIcon())
+            .setContentTitle(if (isFinal) "🔔 다음 역에서 내리세요!" else "🔁 다음 역에서 환승!")
             .setContentText("${leg.to} · $eta 도착")
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setOngoing(true).setColor(0xFF0A84FF.toInt())
@@ -245,7 +245,8 @@ class TripService : Service() {
     private fun notifyArrived(leg: Leg) {
         vibrate(short = true)
         val n = base(CH_ALERT)
-            .setContentTitle("${leg.to} 도착")
+            .setLargeIcon(trainLargeIcon())
+            .setContentTitle("🎉 ${leg.to} 도착")
             .setContentText("안전하게 내리세요. 안내를 종료합니다.")
             .setAutoCancel(true)
             .build()
@@ -281,6 +282,7 @@ class TripService : Service() {
     }
 
     private fun createChannels() {
+        nm().deleteNotificationChannel("trip_alert")   // 구버전 채널 제거 (설정 굳음 해소)
         nm().createNotificationChannel(
             NotificationChannel(CH_CHIP, "경로 안내", NotificationManager.IMPORTANCE_LOW))
         nm().createNotificationChannel(
@@ -298,6 +300,22 @@ class TripService : Service() {
         stopSelf()
     }
 
+    /** 파란 원 + 열차 벡터 → 알림 큰 아이콘 */
+    private fun trainLargeIcon(): android.graphics.Bitmap {
+        val size = 128
+        val bmp = android.graphics.Bitmap.createBitmap(
+            size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(bmp)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            .apply { color = 0xFF0A84FF.toInt() }
+        c.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+        androidx.core.content.ContextCompat
+            .getDrawable(this, com.metrolive.R.drawable.ic_launcher_fg)?.apply {
+                setBounds(0, 0, size, size); draw(c)
+            }
+        return bmp
+    }
+
     private fun nm() = getSystemService(NotificationManager::class.java)
     override fun onDestroy() { scope.cancel(); super.onDestroy() }
     override fun onBind(intent: Intent?): IBinder? = null
@@ -306,7 +324,7 @@ class TripService : Service() {
         private const val NOTI_ID = 1001
         private const val ALERT_ID = 1003
         private const val CH_CHIP = "trip_chip"
-        private const val CH_ALERT = "trip_alert"
+        private const val CH_ALERT = "trip_alert_v2"
         const val ACTION_STOP = "com.metrolive.STOP_TRIP"
         const val ACTION_SET_BOARDING = "com.metrolive.SET_BOARDING"
         const val ACTION_SET_TRAIN = "com.metrolive.SET_TRAIN"
