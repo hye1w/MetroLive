@@ -132,11 +132,15 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         val message: String, val trainNo: String,
     )
 
-    suspend fun arrivalsFor(station: String, lineName: String): List<ArrivalInfo> = runCatching {
+    suspend fun arrivalsFor(
+        station: String, lineName: String, upLine: Boolean? = null,
+    ): List<ArrivalInfo> = runCatching {
         val id = subwayIds[lineName]
+        val wantUpDown = upLine?.let { if (it) setOf("상행", "내선") else setOf("하행", "외선") }
         api.realtimeArrival(stationName = station).list
             .filter { lagSeconds(it.receivedAt) < 300 }
             .filter { id == null || it.subwayId == id }
+            .filter { wantUpDown == null || it.upDown in wantUpDown }
             .map {
                 val raw = it.etaSeconds.toIntOrNull() ?: 0
                 ArrivalInfo(
