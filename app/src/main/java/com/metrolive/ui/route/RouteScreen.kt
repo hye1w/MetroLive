@@ -361,8 +361,8 @@ fun RouteScreen(
                             val canonicalL = StaticData.segmentFor(leg.line, leg.from, leg.to)
                             val idxL = StaticData.indexOfSeg(canonicalL)
                             mids.forEachIndexed { mi, name ->
-                                if (mi == 0) return@forEachIndexed
-                                val isFinal = mi == mids.lastIndex
+                                if (mi == 0 || mi == mids.lastIndex) return@forEachIndexed
+                                val isFinal = false
                                 val hasTrain = i == selLeg && legTrains.any { t ->
                                     canonicalL.getOrNull(t.position.toInt())?.name == name
                                 }
@@ -432,9 +432,36 @@ fun RouteScreen(
                                 fontSize = 12.sp, color = IosSecondary,
                             )
                         }
-                        else
-                            Text(leg.to, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                                modifier = Modifier.padding(top = 8.dp))
+                        else {
+                            // 최종 도착지 (1회만 크게) + 남은시간·도착 예정 시각
+                            val finalSec = run {
+                                val segF = StaticData.segmentFor(leg.line, leg.from, leg.to)
+                                val idxF = StaticData.indexOfSeg(segF)
+                                val chosen = startTrainNoHolder.value
+                                val rt = if (i == selLeg && chosen != null)
+                                    legTrains.firstOrNull {
+                                        com.metrolive.data.normalizeTrainNo(it.trainNo) ==
+                                        com.metrolive.data.normalizeTrainNo(chosen)
+                                    }?.takeIf { it.etaSeconds >= 0 }?.let { mt ->
+                                        mt.etaSeconds + kotlin.math.abs(
+                                            (idxF[leg.to] ?: 0) - (idxF[leg.from] ?: 0)) * 120
+                                    } else null
+                                rt ?: v.totalSec
+                            }
+                            val clockF = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
+                                .format(java.util.Date(System.currentTimeMillis() + finalSec * 1000L))
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 8.dp),
+                                verticalAlignment = Alignment.Bottom,
+                            ) {
+                                Text(leg.to, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    "약 %d분 후 · %s 도착".format((finalSec + 59) / 60, clockF),
+                                    fontSize = 13.sp, color = IosBlue, fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
                     }
                 }
             }

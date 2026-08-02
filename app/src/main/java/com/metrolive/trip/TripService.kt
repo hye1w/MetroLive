@@ -116,14 +116,22 @@ class TripService : Service() {
                 val next = seg.getOrNull(if (forward) curIdx + 1 else curIdx - 1)?.name ?: leg.to
                 when {
                     left <= 0 -> {                               // 구간 도착
+                        nm().cancel(ALERT_ID)
                         if (legIdx == legs.lastIndex) { notifyArrived(leg); stopSession(); return }
                         val nextLeg = legs[legIdx + 1]
                         notifyTransfer(leg, nextLeg)
                         legIdx++; trainNo = null; alerted = false
                         adoptAfter = System.currentTimeMillis() + 240_000  // 환승 도보 4분
                     }
-                    left == 1 && !alerted -> { alerted = true; vibrate(); updateNotification(alertNotification(leg, me.etaSeconds)) }
-                    left == 1 -> updateNotification(alertNotification(leg, me.etaSeconds))
+                    left == 1 && !alerted -> {
+                        alerted = true; vibrate()
+                        nm().notify(ALERT_ID, alertNotification(leg, me.etaSeconds))  // 새 ID → 헤드업 정상 발생
+                        updateNotification(ongoingNotification("곧 ${leg.to} 도착", left, next))
+                    }
+                    left == 1 -> {
+                        nm().notify(ALERT_ID, alertNotification(leg, me.etaSeconds))
+                        updateNotification(ongoingNotification("곧 ${leg.to} 도착", left, next))
+                    }
                     else -> updateNotification(
                         ongoingNotification("${leg.line} · ${leg.from} → ${leg.to}", left, next)
                     )
@@ -152,10 +160,11 @@ class TripService : Service() {
         val ticker = "다음역 $next · ${leg?.to}까지 ${left}정거장"
         val track = leg?.let {
             val total = StaticData.stationsBetween(it.line, it.from, it.to).size - 1
-            if (total > 0 && left in 0..total) {
-                val doneN = (total - left).coerceIn(0, total)
-                "●" + "━".repeat(doneN.coerceAtMost(8)) + "🚇" +
-                "─".repeat(left.coerceAtMost(8)) + "○ ${it.to}"
+            if (total > 0 && left >= 0) {
+                val leftDisp = left.coerceIn(0, total)
+                val doneN = total - leftDisp
+                "${it.from} ●" + "━".repeat(doneN.coerceAtMost(8)) + "🚇" +
+                "─".repeat(leftDisp.coerceAtMost(8)) + "○ ${it.to}"
             } else null
         }
         val title = if (left > 0) "다음역 $next · ${leg?.to}까지 ${left}정거장"
@@ -284,7 +293,8 @@ class TripService : Service() {
         TripState.setLegs(emptyList())
         scope.coroutineContext.cancelChildren()
         stopForeground(STOP_FOREGROUND_REMOVE)
-        nm().cancel(NOTI_ID)          // 진행 알림만 제거, 도착 알림(id+1)은 유지
+        nm().cancel(NOTI_ID)          // 진행 알림 제거
+        nm().cancel(ALERT_ID)         // 1정거장 전 헤드업 제거 (도착 알림은 유지)
         stopSelf()
     }
 
@@ -294,6 +304,7 @@ class TripService : Service() {
 
     companion object {
         private const val NOTI_ID = 1001
+        private const val ALERT_ID = 1003
         private const val CH_CHIP = "trip_chip"
         private const val CH_ALERT = "trip_alert"
         const val ACTION_STOP = "com.metrolive.STOP_TRIP"

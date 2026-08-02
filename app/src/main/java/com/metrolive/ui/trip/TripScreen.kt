@@ -86,6 +86,34 @@ fun TripScreen(onClose: () -> Unit) {
         }
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp)) {
+            // 요약 카드: 남은 소요시간 · 도착 예정
+            info?.let { inf ->
+                val futureSec = legs.drop(inf.legIdx + 1).sumOf { l ->
+                    (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
+                }
+                val totalSec = (inf.left.coerceAtLeast(0)) * 120 + futureSec
+                val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
+                    .format(java.util.Date(System.currentTimeMillis() + totalSec * 1000L))
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(IosCard)
+                        .border(0.5.dp, IosSeparator, RoundedCornerShape(18.dp)).padding(18.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Text("${(totalSec + 59) / 60}", fontSize = 34.sp,
+                        fontWeight = FontWeight.ExtraBold, color = IosBlue)
+                    Text("분", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = IosBlue,
+                        modifier = Modifier.padding(bottom = 4.dp, start = 2.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.padding(bottom = 4.dp)) {
+                        Text("${legs.lastOrNull()?.to ?: inf.dest} · $clock 도착 예정",
+                            fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("다음역 ${inf.next}" +
+                            if (inf.left > 0) " · ${inf.left}정거장 남음" else "",
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
             // 구간 탭 + 실시간 스트립
             val curLeg = legs[selLeg]
             val legColor = Color(Network.lineColors[curLeg.line] ?: 0xFF8E8E93)
