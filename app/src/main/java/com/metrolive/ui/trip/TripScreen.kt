@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -18,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -52,7 +56,7 @@ fun TripScreen(onClose: () -> Unit) {
                     val futureSec = legs.drop(inf.legIdx + 1).sumOf { l ->
                         (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
                     }
-                    val totalSec = (inf.left.coerceAtLeast(0)) * 120 + futureSec
+                    val totalSec = ((liveLeft ?: inf.left).coerceAtLeast(0)) * 120 + futureSec
                     val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
                         .format(java.util.Date(System.currentTimeMillis() + totalSec * 1000L))
                     Text(
@@ -85,13 +89,31 @@ fun TripScreen(onClose: () -> Unit) {
             }
         }
 
+        // 내 열차의 화면 실시간 위치 기반 남은 정거장 (없으면 서비스 값)
+        val liveLeft: Int? = run {
+            if (selLeg != curLegIdx) return@run null
+            val leg = legs.getOrNull(curLegIdx) ?: return@run null
+            val my = info?.trainNo?.let { no ->
+                legTrains.firstOrNull {
+                    com.metrolive.data.normalizeTrainNo(it.trainNo) ==
+                    com.metrolive.data.normalizeTrainNo(no)
+                }
+            } ?: return@run null
+            val seg = StaticData.segmentFor(leg.line, leg.from, leg.to)
+            val idx = StaticData.indexOfSeg(seg)
+            val toIdx = idx[leg.to] ?: return@run null
+            val fromIdx = idx[leg.from] ?: return@run null
+            val d = if (toIdx > fromIdx) toIdx - my.position else my.position - toIdx
+            kotlin.math.ceil(d.toDouble()).toInt().coerceAtLeast(0)
+        }
+
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp)) {
             // 요약 카드: 남은 소요시간 · 도착 예정
             info?.let { inf ->
                 val futureSec = legs.drop(inf.legIdx + 1).sumOf { l ->
                     (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
                 }
-                val totalSec = (inf.left.coerceAtLeast(0)) * 120 + futureSec
+                val totalSec = ((liveLeft ?: inf.left).coerceAtLeast(0)) * 120 + futureSec
                 val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
                     .format(java.util.Date(System.currentTimeMillis() + totalSec * 1000L))
                 Row(
@@ -146,70 +168,99 @@ fun TripScreen(onClose: () -> Unit) {
                 val idxMap = StaticData.indexOfSeg(canonical)
                 val fwd = (idxMap[curLeg.to] ?: 0) > (idxMap[curLeg.from] ?: 0)
                 val slice = canonical.map { it.name }.let { if (fwd) it else it.reversed() }
-                val listState = rememberLazyListState()
-                LaunchedEffect(selLeg, slice.size, info?.trainNo, legTrains.size) {
-                    val myName = info?.trainNo?.let { no ->
-                        legTrains.firstOrNull {
+                val slotW = 78.dp
+                val hScroll = rememberScrollState()
+                val density = LocalDensity.current
+
+                // 초당 보간: 다음 갱신까지 열차가 역 사이를 실시간처럼 이동
+                var creepTick by remember { mutableIntStateOf(0) }
+                LaunchedEffect(legTrains) { creepTick = 0 }
+                LaunchedEffect(Unit) {
+                    while (true) { kotlinx.coroutines.delay(1000); creepTick++ }
+                }
+                fun dispPos(t: Train): Float {
+                    val p = if (fwd) t.position else (canonical.size - 1) - t.position
+                    val creep = if (!t.isStopped) (creepTick / 110f).coerceAtMost(0.9f) else 0f
+                    return (p + creep).coerceIn(0f, (slice.size - 1).toFloat())
+                }
+                val trainsView = legTrains.distinctBy {
+                    com.metrolive.data.normalizeTrainNo(it.trainNo)
+                }
+                val trainAtSlot: Set<Int> = trainsView.map { dispPos(it).toInt() }.toSet()
+
+                // 자동 스크롤: 내 열차 부근으로
+                LaunchedEffect(selLeg, info?.trainNo, legTrains.size) {
+                    val my = info?.trainNo?.let { no ->
+                        trainsView.firstOrNull {
                             com.metrolive.data.normalizeTrainNo(it.trainNo) ==
                             com.metrolive.data.normalizeTrainNo(no)
                         }
-                    }?.let { canonical.getOrNull(it.position.toInt())?.name }
-                    val target = myName?.let { slice.indexOf(it) }?.takeIf { it >= 0 }
-                        ?: slice.indexOf(curLeg.from)
-                    listState.scrollToItem((target - 1).coerceAtLeast(0))
+                    }
+                    val target = my?.let { dispPos(it).toInt() } ?: slice.indexOf(curLeg.from)
+                    hScroll.scrollTo(
+                        with(density) { (slotW * (target - 1).coerceAtLeast(0)).roundToPx() })
                 }
-                LazyRow(state = listState) {
-                    itemsIndexed(slice) { _, name ->
-                        val trainsHere = legTrains.filter { t ->
-                            canonical.getOrNull(t.position.toInt())?.name == name
-                        }.distinctBy { it.trainNo }
-                        Column(Modifier.width(78.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(Modifier.height(56.dp), contentAlignment = Alignment.BottomCenter) {
-                                trainsHere.firstOrNull()?.let { t ->
-                                    val isMine = info?.trainNo?.let {
-                                        com.metrolive.data.normalizeTrainNo(t.trainNo) ==
-                                        com.metrolive.data.normalizeTrainNo(it) } == true
-                                    val isPending = pendingTrain?.trainNo == t.trainNo
-                                    Column(
-                                        Modifier.width(72.dp).height(52.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable(enabled = !isMine) {
-                                                pendingTrain = if (isPending) null else t
-                                            }
-                                            .background(
-                                                if (isMine) IosBlue.copy(alpha = .08f)
-                                                else if (isPending) IosOrange.copy(alpha = .12f)
-                                                else IosCard)
-                                            .border(if (isMine || isPending) 2.dp else 1.5.dp,
-                                                if (isMine) IosBlue
-                                                else if (isPending) IosOrange else legColor,
-                                                RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 4.dp, vertical = 4.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center,
-                                    ) {
-                                        Text(t.destination, fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold, color = legColor, maxLines = 1)
-                                        Text(if (isMine) "내 열차" else t.trainNo,
-                                            fontSize = 9.sp, maxLines = 1,
-                                            color = if (isMine) IosBlue else IosSecondary,
-                                            fontWeight = if (isMine) FontWeight.Bold else FontWeight.Normal)
-                                    }
+
+                Box(Modifier.horizontalScroll(hScroll)) {
+                    // 바닥: 역 슬롯들 (트랙·점·이름)
+                    Row {
+                        slice.forEachIndexed { si, name ->
+                            Column(Modifier.width(slotW),
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Spacer(Modifier.height(56.dp))
+                                Box(Modifier.fillMaxWidth().height(14.dp),
+                                    contentAlignment = Alignment.Center) {
+                                    Box(Modifier.fillMaxWidth().height(3.dp)
+                                        .background(legColor.copy(alpha = .35f)))
+                                    Box(
+                                        Modifier.size(if (si in trainAtSlot) 13.dp else 9.dp)
+                                            .clip(CircleShape)
+                                            .background(if (si in trainAtSlot) legColor else IosCard)
+                                            .border(2.5.dp, legColor, CircleShape)
+                                    )
                                 }
+                                val isEnd = name == curLeg.from || name == curLeg.to
+                                Text(name, fontSize = 10.5.sp, maxLines = 2,
+                                    textAlign = TextAlign.Center,
+                                    color = if (isEnd) legColor else IosLabel,
+                                    fontWeight = if (isEnd) FontWeight.ExtraBold
+                                                 else FontWeight.Medium)
                             }
-                            Box(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.Center) {
-                                Box(Modifier.fillMaxWidth().height(3.dp).background(legColor.copy(alpha = .35f)))
-                                Box(
-                                    Modifier.size(if (trainsHere.isNotEmpty()) 13.dp else 9.dp)
-                                        .clip(CircleShape)
-                                        .background(if (trainsHere.isNotEmpty()) legColor else IosCard)
-                                        .border(2.5.dp, legColor, CircleShape)
-                                )
-                            }
-                            val isEnd = name == curLeg.from || name == curLeg.to
-                            Text(name, fontSize = 10.5.sp, maxLines = 2, textAlign = TextAlign.Center,
-                                color = if (isEnd) legColor else IosLabel,
-                                fontWeight = if (isEnd) FontWeight.ExtraBold else FontWeight.Medium)
+                        }
+                    }
+                    // 오버레이: 열차 카드 (역 사이를 부드럽게 이동)
+                    trainsView.forEach { t ->
+                        val isMine = info?.trainNo?.let {
+                            com.metrolive.data.normalizeTrainNo(t.trainNo) ==
+                            com.metrolive.data.normalizeTrainNo(it) } == true
+                        val isPending = pendingTrain?.trainNo == t.trainNo
+                        val x by animateDpAsState(
+                            slotW * dispPos(t) + 3.dp, tween(900), label = "trainX")
+                        Column(
+                            Modifier.offset(x = x)
+                                .width(72.dp).height(52.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable(enabled = !isMine) {
+                                    pendingTrain = if (isPending) null else t
+                                }
+                                .background(
+                                    if (isMine) IosBlue.copy(alpha = .1f)
+                                    else if (isPending) IosOrange.copy(alpha = .12f)
+                                    else IosCard)
+                                .border(if (isMine || isPending) 2.dp else 1.5.dp,
+                                    if (isMine) IosBlue
+                                    else if (isPending) IosOrange else legColor,
+                                    RoundedCornerShape(10.dp))
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(t.destination, fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold, color = legColor, maxLines = 1)
+                            Text(if (isMine) "내 열차" else t.trainNo,
+                                fontSize = 9.sp, maxLines = 1,
+                                color = if (isMine) IosBlue else IosSecondary,
+                                fontWeight = if (isMine) FontWeight.Bold else FontWeight.Normal)
                         }
                     }
                 }
@@ -328,7 +379,7 @@ fun TripScreen(onClose: () -> Unit) {
                                     val futureSec2 = legs.drop(inf.legIdx + 1).sumOf { l ->
                                         (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
                                     }
-                                    val totalSec2 = (inf.left.coerceAtLeast(0)) * 120 + futureSec2
+                                    val totalSec2 = ((liveLeft ?: inf.left).coerceAtLeast(0)) * 120 + futureSec2
                                     val clock2 = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
                                         .format(java.util.Date(System.currentTimeMillis() + totalSec2 * 1000L))
                                     Text(
