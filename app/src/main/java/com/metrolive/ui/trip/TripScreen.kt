@@ -67,7 +67,9 @@ fun TripScreen(onClose: () -> Unit) {
             val leg = legs.getOrNull(selLeg) ?: return@LaunchedEffect
             val up = StaticData.legUp(leg.line, leg.from, leg.to)
             while (true) {
-                legTrains = MetroRepository().trainsOnce(leg.line, leg.from, up)
+                legTrains = MetroRepository().trainsOnce(
+                    leg.line, leg.from, up,
+                    segNames = StaticData.segmentFor(leg.line, leg.from, leg.to).map { it.name })
                 kotlinx.coroutines.delay(15_000)
             }
         }
@@ -101,8 +103,8 @@ fun TripScreen(onClose: () -> Unit) {
                 }
                 Spacer(Modifier.height(10.dp))
 
-                val canonical = StaticData.segmentOf(curLeg.line)
-                val idxMap = StaticData.indexOf(curLeg.line)
+                val canonical = StaticData.segmentFor(curLeg.line, curLeg.from, curLeg.to)
+                val idxMap = StaticData.indexOfSeg(canonical)
                 val fwd = (idxMap[curLeg.to] ?: 0) > (idxMap[curLeg.from] ?: 0)
                 val slice = canonical.map { it.name }.let { if (fwd) it else it.reversed() }
                 val listState = rememberLazyListState()
@@ -187,7 +189,8 @@ fun TripScreen(onClose: () -> Unit) {
                         // 전체 역 목록 (진행 중 구간엔 실시간 열차·내 열차 표시)
                         val mids = StaticData.stationsBetween(leg.line, leg.from, leg.to)
                         val canonicalL = StaticData.segmentOf(leg.line)
-                        val idxMapT = StaticData.indexOf(leg.line)
+                        val idxMapT = StaticData.indexOfSeg(
+                            StaticData.segmentFor(leg.line, leg.from, leg.to))
                         val fwdT = (idxMapT[leg.to] ?: 0) > (idxMapT[leg.from] ?: 0)
                         val myTrain = if (i == curLegIdx) info?.trainNo?.let { no ->
                             legTrains.firstOrNull {

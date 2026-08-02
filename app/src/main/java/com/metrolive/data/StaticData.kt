@@ -11,15 +11,43 @@ object StaticData {
 
     /** 노선별 표시 구간 (본선 첫 구간, 순환선은 중복 종점 제거) */
     private val segCache = mutableMapOf<String, List<Station>>()
-    fun segmentOf(line: String): List<Station> = segCache.getOrPut(line) {
-        val seg = Network.lines[line]?.first() ?: emptyList()
-        val names = if (seg.size > 1 && seg.first() == seg.last()) seg.dropLast(1) else seg
+
+    private fun toStations(line: String, names: List<String>): List<Station> =
         names.map { name ->
             val others = Network.linesOf[name].orEmpty().filter { it != line }
             Station(name, isTransfer = others.isNotEmpty(),
                 transferInfo = others.joinToString(" · ").ifEmpty { null })
         }
+
+    fun segmentOf(line: String): List<Station> = segCache.getOrPut(line) {
+        val seg = Network.lines[line]?.first() ?: emptyList()
+        val names = if (seg.size > 1 && seg.first() == seg.last()) seg.dropLast(1) else seg
+        toStations(line, names)
     }
+
+    /** 화면 표시용 분기 목록. 1호선 = [경부(가산·금천구청·석수), 경인(구일·온수)] */
+    fun segmentsOf(line: String): List<Pair<String, List<Station>>> {
+        if (line == "1호선") {
+            val segs = Network.lines[line] ?: return listOf("" to segmentOf(line))
+            val main = segs[0]; val branch = segs[1]
+            val cut = main.indexOf("구로")
+            val gyeongbu = main.subList(0, cut + 1) + branch.drop(1)
+            return listOf(
+                "경부선 · 가산 · 금천구청" to toStations(line, gyeongbu),
+                "경인선 · 구일 · 온수" to toStations(line, main),
+            )
+        }
+        return listOf("" to segmentOf(line))
+    }
+
+    /** 주어진 역들을 모두 포함하는 표시 구간 선택 (지선 대응) */
+    fun segmentFor(line: String, vararg sts: String): List<Station> =
+        segmentsOf(line).map { it.second }
+            .firstOrNull { seg -> sts.all { st -> seg.any { it.name == st } } }
+            ?: segmentOf(line)
+
+    fun indexOfSeg(seg: List<Station>): Map<String, Int> =
+        seg.mapIndexed { i, st -> st.name to i }.toMap()
 
     fun indexOf(line: String): Map<String, Int> =
         segmentOf(line).mapIndexed { i, s -> s.name to i }.toMap()
@@ -69,8 +97,9 @@ object StaticData {
 
     /** 구간의 전체 역 목록 (from→to 순서). 2호선은 실제 경유 방향(정거장 수)으로 판별 */
     fun stationsBetween(line: String, from: String, to: String, expectedStops: Int = -1): List<String> {
-        val idx = indexOf(line)
-        val names = segmentOf(line).map { it.name }
+        val seg = segmentFor(line, from, to)
+        val idx = indexOfSeg(seg)
+        val names = seg.map { it.name }
         val a = idx[from] ?: return emptyList()
         val b = idx[to] ?: return emptyList()
         val linear = if (a <= b) names.subList(a, b + 1).toList()
@@ -90,7 +119,7 @@ object StaticData {
      * 종착역이 노선 목록에 없으면(인천·병점 등 연장 구간) 통과로 간주.
      */
     fun coversLeg(line: String, destLabel: String, from: String, to: String): Boolean {
-        val idx = indexOf(line)
+        val idx = indexOfSeg(segmentFor(line, from, to))
         val destName = destLabel.removeSuffix("행").removeSuffix("종착")
         val d = idx[destName] ?: return true
         val a = idx[from] ?: return true
@@ -108,7 +137,7 @@ object StaticData {
 
     /** from→to 이동에 필요한 상/하행(2호선은 내선/외선) 판정 */
     fun legUp(line: String, from: String, to: String): Boolean {
-        val idx = indexOf(line)
+        val idx = indexOfSeg(segmentFor(line, from, to))
         val forward = (idx[to] ?: 0) > (idx[from] ?: 0)
         return if (line == "2호선") forward else !forward
     }

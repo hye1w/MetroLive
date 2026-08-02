@@ -43,10 +43,12 @@ fun LiveMapScreen(
 
     Box(Modifier.fillMaxSize().background(IosBg)) {
         Column(Modifier.fillMaxSize()) {
-            Header(st, lineColor, onLine = vm::selectLine, onDirection = vm::setDirection)
+            Header(st, lineColor, onLine = vm::selectLine, onDirection = vm::setDirection,
+                onBranch = vm::selectBranch)
             TrainMap(
                 line = st.line,
                 upLine = st.upLine,
+                segment = st.segment,
                 lineColor = lineColor,
                 trains = st.trains,
                 selectedNo = st.selectedTrainNo,
@@ -72,6 +74,7 @@ fun LiveMapScreen(
             BottomBoardCard(
                 train = train,
                 onCongestion = vm::openCongestion, onBoard = vm::requestBoard,
+                onClose = vm::clearSelection,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -140,7 +143,7 @@ private fun DestinationSheet(
 @Composable
 private fun Header(
     st: LiveUiState, lineColor: Color,
-    onLine: (String) -> Unit, onDirection: (Boolean) -> Unit,
+    onLine: (String) -> Unit, onDirection: (Boolean) -> Unit, onBranch: (Int) -> Unit,
 ) {
     Column(Modifier.statusBarsPadding().padding(vertical = 8.dp)) {
         Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -205,8 +208,29 @@ private fun Header(
                 )
             }
         }
+        // 분기 선택 (1호선: 경부/경인)
+        if (st.branches.size > 1) {
+            Row(
+                Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                st.branches.forEachIndexed { i, (label, _) ->
+                    val on = i == st.branch
+                    Text(
+                        label, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        color = if (on) Color.White else lineColor,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (on) lineColor else IosCard)
+                            .border(1.dp, lineColor, RoundedCornerShape(20.dp))
+                            .clickable { onBranch(i) }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
+        }
         Text(
-            "열차 진행 방향: ${if (StaticData.movesForward(st.line, st.upLine)) "아래 ▼" else "위 ▲"} · ${StaticData.terminusOf(st.line, st.upLine)}",
+            "열차는 위에서 아래로 ▼ 진행 · ${StaticData.terminusOf(st.line, st.upLine)}",
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
@@ -232,18 +256,21 @@ private fun Header(
 
 @Composable
 private fun TrainMap(
-    line: String, upLine: Boolean, lineColor: Color,
+    line: String, upLine: Boolean, segment: List<com.metrolive.data.Station>, lineColor: Color,
     trains: List<Train>, selectedNo: String?,
     onTrainTap: (String) -> Unit, modifier: Modifier,
 ) {
     val forward = StaticData.movesForward(line, upLine)
-    val stations = StaticData.segmentOf(line)          // 지리 순서 고정 (위=목록 시작)
-    val arrow = if (forward) "▼" else "▲"              // 진행 방향 표시
+    val canonical = segment                              // 선택된 분기 구간
+    val stations = if (forward) canonical else canonical.reversed()  // 열차 항상 위→아래
+    val lastIdx = (canonical.size - 1).coerceAtLeast(0).toFloat()
+    val arrow = "▼"
 
-    // 열차를 역 구간별 그룹핑 (canonical index 그대로)
+    // 표시 좌표(방향 보정) 기준으로 역 구간별 그룹핑
     val byItem: Map<Int, List<Pair<Train, Float>>> = trains
-        .groupBy({ it.position.toInt().coerceIn(0, stations.lastIndex) }) { t ->
-            t to (t.position - t.position.toInt())
+        .map { t -> t to (if (forward) t.position else lastIdx - t.position) }
+        .groupBy({ it.second.toInt().coerceIn(0, stations.lastIndex) }) { (t, dp) ->
+            t to (dp - dp.toInt())
         }
 
     // 전체 영역 어디서든 스크롤되는 표준 리스트
@@ -354,7 +381,7 @@ private fun TrainCard(
 @Composable
 private fun BottomBoardCard(
     train: Train,
-    onCongestion: () -> Unit, onBoard: () -> Unit, modifier: Modifier,
+    onCongestion: () -> Unit, onBoard: () -> Unit, onClose: () -> Unit, modifier: Modifier,
 ) {
     val cong = remember(train.trainNo) { StaticData.statisticalCongestion(train.trainNo) }
     Column(
@@ -366,6 +393,14 @@ private fun BottomBoardCard(
     ) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(train.destination, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "✕", fontSize = 16.sp, color = IosSecondary, fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(CircleShape).background(Color(0x14000000))
+                    .clickable(onClick = onClose)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            )
             Spacer(Modifier.width(8.dp))
             Text("열차 ${train.trainNo}", style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.weight(1f))

@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 data class LiveUiState(
     val line: String = "1호선",
     val upLine: Boolean = false,   // 1호선 기본: 하행(인천·수원 방면)
+    val branch: Int = 0,           // 분기 인덱스 (1호선: 0=경부, 1=경인)
     val trains: List<Train> = emptyList(),
     val selectedTrainNo: String? = null,
     val secondsSinceRefresh: Int = 0,
@@ -26,6 +27,8 @@ data class LiveUiState(
     val boarding: BoardingPosition? = null,
 ) {
     val selectedTrain get() = trains.firstOrNull { it.trainNo == selectedTrainNo }
+    val branches get() = StaticData.segmentsOf(line)
+    val segment get() = branches.getOrNull(branch)?.second ?: StaticData.segmentOf(line)
 }
 
 class LiveMapViewModel(
@@ -55,7 +58,8 @@ class LiveMapViewModel(
         pollJob?.cancel()
         val s = _state.value
         pollJob = viewModelScope.launch {
-            repo.liveTrains(s.line, s.upLine).collect { trains ->
+            repo.liveTrains(s.line, s.upLine,
+                segNames = s.segment.map { it.name }).collect { trains ->
                 _state.value = _state.value.copy(
                     trains = trains,
                     secondsSinceRefresh = 0,
@@ -74,9 +78,18 @@ class LiveMapViewModel(
 
     fun selectLine(line: String) {
         if (line == _state.value.line) return
-        _state.value = _state.value.copy(line = line, trains = emptyList(), selectedTrainNo = null)
+        _state.value = _state.value.copy(
+            line = line, branch = 0, trains = emptyList(), selectedTrainNo = null)
         restartPolling()
     }
+
+    fun selectBranch(i: Int) {
+        if (i == _state.value.branch) return
+        _state.value = _state.value.copy(branch = i, trains = emptyList(), selectedTrainNo = null)
+        restartPolling()
+    }
+
+    fun clearSelection() { _state.value = _state.value.copy(selectedTrainNo = null) }
 
     fun setDirection(up: Boolean) {
         if (up == _state.value.upLine) return

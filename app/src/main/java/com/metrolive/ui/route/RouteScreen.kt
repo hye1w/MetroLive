@@ -122,7 +122,9 @@ fun RouteScreen(
             val leg = v.legs.getOrNull(selLeg) ?: return@LaunchedEffect
             val up = StaticData.legUp(leg.line, leg.from, leg.to)
             while (true) {
-                legTrains = MetroRepository().trainsOnce(leg.line, leg.from, up)
+                legTrains = MetroRepository().trainsOnce(
+                    leg.line, leg.from, up,
+                    segNames = StaticData.segmentFor(leg.line, leg.from, leg.to).map { it.name })
                 kotlinx.coroutines.delay(15_000)
             }
         }
@@ -182,8 +184,8 @@ fun RouteScreen(
 
                     // 가로 실시간 스트립 — 전체 노선 표시 (다음/이전 열차 선택 가능하도록)
                     val legColor = Color(Network.lineColors[curLeg.line] ?: 0xFF8E8E93)
-                    val canonical = StaticData.segmentOf(curLeg.line)
-                    val idxMap = StaticData.indexOf(curLeg.line)
+                    val canonical = StaticData.segmentFor(curLeg.line, curLeg.from, curLeg.to)
+                    val idxMap = StaticData.indexOfSeg(canonical)
                     val fwd = (idxMap[curLeg.to] ?: 0) > (idxMap[curLeg.from] ?: 0)
                     val slice = canonical.map { it.name }.let { if (fwd) it else it.reversed() }
                     // 추천 열차: 출발역 직전에서 접근 중인 열차
@@ -356,7 +358,8 @@ fun RouteScreen(
                         )
                         if (expanded.contains(i)) {
                             val mids = StaticData.stationsBetween(leg.line, leg.from, leg.to, leg.stops)
-                            val canonicalL = StaticData.segmentOf(leg.line)
+                            val canonicalL = StaticData.segmentFor(leg.line, leg.from, leg.to)
+                            val idxL = StaticData.indexOfSeg(canonicalL)
                             mids.forEachIndexed { mi, name ->
                                 if (mi == 0) return@forEachIndexed
                                 val isFinal = mi == mids.lastIndex
@@ -370,10 +373,9 @@ fun RouteScreen(
                                         com.metrolive.data.normalizeTrainNo(it) } == true
                                 }
                                 val etaHere: Int? = if (i == selLeg && chosen != null) {
-                                    val stIdx = StaticData.indexOf(leg.line)[name]
+                                    val stIdx = idxL[name]
                                     stIdx?.let {
-                                        val fwdL = (StaticData.indexOf(leg.line)[leg.to] ?: 0) >
-                                                   (StaticData.indexOf(leg.line)[leg.from] ?: 0)
+                                        val fwdL = (idxL[leg.to] ?: 0) > (idxL[leg.from] ?: 0)
                                         val diff = if (fwdL) it - chosen.position else chosen.position - it
                                         if (diff > 0) (diff * StaticData.AVG_SEGMENT_SECONDS).toInt() else null
                                     }

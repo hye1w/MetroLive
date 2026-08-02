@@ -85,13 +85,14 @@ class TripService : Service() {
         var adoptAfter = 0L                       // 환승 도보 시간만큼 탑승열차 특정 유예
         while (legIdx < legs.size) {
             val leg = legs[legIdx]
-            val index = StaticData.indexOf(leg.line)
-            val seg = StaticData.segmentOf(leg.line)
+            val seg = StaticData.segmentFor(leg.line, leg.from, leg.to)
+            val index = StaticData.indexOfSeg(seg)
             val destIdx = index[leg.to] ?: break
             val fromIdx = index[leg.from] ?: break
             val forward = destIdx > fromIdx
 
-            val trains = repo.trainsOnce(leg.line, baseStation = leg.to, upLine = leg.up)
+            val trains = repo.trainsOnce(leg.line, baseStation = leg.to, upLine = leg.up,
+                segNames = seg.map { it.name })
             val now = System.currentTimeMillis()
 
             // 탑승 열차 특정: 출발역 직전(진행 방향 기준)에서 접근 중인 열차

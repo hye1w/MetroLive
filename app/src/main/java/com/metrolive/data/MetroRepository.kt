@@ -48,8 +48,10 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
         lineName: String,
         upLine: Boolean,
         pollMs: Long = 15_000,
+        segNames: List<String>? = null,
     ): Flow<List<Train>> = flow {
-        val index = StaticData.indexOf(lineName)
+        val index = segNames?.mapIndexed { i, n -> n to i }?.toMap()
+            ?: StaticData.indexOf(lineName)
         val sign = if (StaticData.movesForward(lineName, upLine)) 1 else -1
         while (true) {
             if (!AppVisibility.foreground) { delay(pollMs); continue }
@@ -109,44 +111,20 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
     }
 
     /** 단발 조회 (탑승 세션 폴링용) */
-    suspend fun trainsOnce(lineName: String, baseStation: String, upLine: Boolean): List<Train> =
+    suspend fun trainsOnce(
+        lineName: String, baseStation: String, upLine: Boolean,
+        segNames: List<String>? = null,
+    ): List<Train> =
         runCatching {
-            val index = StaticData.indexOf(lineName)
+            val index = segNames?.mapIndexed { i, n -> n to i }?.toMap()
+                ?: StaticData.indexOf(lineName)
             val sign = if (StaticData.movesForward(lineName, upLine)) 1 else -1
             merge(
                 fetchPositions(lineName),
                 api.realtimeArrival(stationName = baseStation).list,
                 index, upLine, sign,
             )
-        }.getOrDefault(emptyList())
-
-    /** 경로 첫 구간용: 특정 역의 해당 노선 실시간 도착 목록 (방향 필터) */
-    data class ArrivalInfo(
-        val trainNo: String, val destination: String, val etaSeconds: Int, val message: String,
-    )
-
-    suspend fun arrivalsFor(station: String, lineName: String, upLine: Boolean? = null): List<ArrivalInfo> = runCatching {
-        val id = subwayIds[lineName]
-        val wantDir: Set<String>? = upLine?.let {
-            if (lineName == "2호선") setOf(if (it) "내선" else "외선", if (it) "0" else "1")
-            else setOf(if (it) "상행" else "하행", if (it) "0" else "1")
-        }
-        api.realtimeArrival(stationName = station).list
-            .filter { lagSeconds(it.receivedAt) < 300 }
-            .filter { id == null || it.subwayId == id }
-            .filter { wantDir == null || it.upDown in wantDir }
-            .map {
-                val raw = it.etaSeconds.toIntOrNull() ?: 0
-                ArrivalInfo(
-                    trainNo = normalizeTrainNo(it.trainNo),
-                    destination = it.destination,
-                    etaSeconds = (raw - lagSeconds(it.receivedAt)).coerceAtLeast(0),
-                    message = it.positionMsg,
-                )
-            }
-            .sortedBy { it.etaSeconds }
-            .take(4)
-    }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()).getOrDefault(emptyList())
 
     private fun lagSeconds(recptnDt: String): Int = runCatching {
         val t = dtFormat.parse(recptnDt)?.time ?: return 0
