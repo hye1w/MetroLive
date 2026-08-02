@@ -126,6 +126,30 @@ class MetroRepository(private val api: SeoulApi = SeoulApi.create()) {
             )
         }.getOrDefault(emptyList())
 
+    /** 경로 첫 구간용: 특정 역의 해당 노선 실시간 도착 목록 (방향·중복 정리) */
+    data class ArrivalInfo(
+        val destination: String, val etaSeconds: Int,
+        val message: String, val trainNo: String,
+    )
+
+    suspend fun arrivalsFor(station: String, lineName: String): List<ArrivalInfo> = runCatching {
+        val id = subwayIds[lineName]
+        api.realtimeArrival(stationName = station).list
+            .filter { lagSeconds(it.receivedAt) < 300 }
+            .filter { id == null || it.subwayId == id }
+            .map {
+                val raw = it.etaSeconds.toIntOrNull() ?: 0
+                ArrivalInfo(
+                    destination = it.destination,
+                    etaSeconds = (raw - lagSeconds(it.receivedAt)).coerceAtLeast(0),
+                    message = it.positionMsg,
+                    trainNo = it.trainNo,
+                )
+            }
+            .sortedBy { it.etaSeconds }
+            .take(4)
+    }.getOrDefault(emptyList())
+
     private fun lagSeconds(recptnDt: String): Int = runCatching {
         val t = dtFormat.parse(recptnDt)?.time ?: return 0
         ((System.currentTimeMillis() - t) / 1000).toInt().coerceIn(0, 300)
