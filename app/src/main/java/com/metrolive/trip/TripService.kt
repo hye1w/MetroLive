@@ -54,13 +54,13 @@ class TripService : Service() {
     private var legIdx = 0
     private var trainNo: String? = null
     private var boarding: BoardingPosition? = null
-    private var alerted = false
+    private var alertedLeg = -1   // 이 구간에서 하차 알림을 이미 보냈는지
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSession(); return START_NOT_STICKY }
         if (intent?.action == ACTION_SET_TRAIN) {
             intent.getStringExtra(EXTRA_TRAIN)?.let { no ->
-                trainNo = no; alerted = false
+                trainNo = no   // 열차를 바꿔도 같은 구간 재알림은 하지 않음
                 TripState.info.value?.let { TripState.set(it.copy(trainNo = no)) }  // 즉시 반영
             }
             return START_STICKY
@@ -79,7 +79,7 @@ class TripService : Service() {
         trainNo = intent.getStringExtra(EXTRA_TRAIN)   // 알면 사용, 없으면 자동 특정
         boarding = intent.getIntExtra(EXTRA_CAR, -1).takeIf { it > 0 }
             ?.let { BoardingPosition(it, intent.getIntExtra(EXTRA_DOOR, 2)) }
-        legIdx = 0; alerted = false
+        legIdx = 0; alertedLeg = -1
         TripState.setLegs(legs.map { TripState.LegInfo(it.line, it.from, it.to) })
 
         createChannels()
@@ -126,24 +126,22 @@ class TripService : Service() {
                         if (legIdx == legs.lastIndex) { notifyArrived(leg); stopSession(); return }
                         val nextLeg = legs[legIdx + 1]
                         notifyTransfer(leg, nextLeg)
-                        legIdx++; trainNo = null; alerted = false
+                        legIdx++; trainNo = null
                         adoptAfter = System.currentTimeMillis() + 240_000  // 환승 도보 4분
                     }
-                    left == 1 && !alerted -> {
-                        alerted = true; vibrate()
-                        nm().notify(ALERT_ID, alertNotification(leg, me.etaSeconds))  // 새 ID → 헤드업 정상 발생
+                    left == 1 && alertedLeg != legIdx -> {
+                        alertedLeg = legIdx; vibrate()
+                        nm().notify(ALERT_ID, alertNotification(leg, me.etaSeconds))  // 구간당 1회만
                         updateNotification(ongoingNotification("곧 ${leg.to} 도착", left, next))
                     }
-                    left == 1 -> {
-                        nm().notify(ALERT_ID, alertNotification(leg, me.etaSeconds))
-                        updateNotification(ongoingNotification("곧 ${leg.to} 도착", left, next))
-                    }
+                    left == 1 -> updateNotification(   // 재알림 없이 진행 정보만 갱신
+                        ongoingNotification("곧 ${leg.to} 도착", left, next))
                     else -> updateNotification(
                         ongoingNotification("${leg.line} · ${leg.from} → ${leg.to}", left, next)
                     )
                 }
             } else {
-                if (alerted && legIdx == legs.lastIndex && trainNo != null) {
+                if (alertedLeg == legIdx && legIdx == legs.lastIndex && trainNo != null) {
                     // 1정거장 전 알림 후 열차가 피드에서 사라짐 = 종착 도착으로 간주
                     notifyArrived(leg); stopSession(); return
                 }
@@ -163,6 +161,16 @@ class TripService : Service() {
         TripState.set(TripState.Info(
             leg?.line ?: "", next, leg?.to ?: "", left, legIdx, legs.size,
             alerting = false, trainNo = trainNo))
+        // 최종 목적지 도착 예정 시각
+        val finalDest = legs.lastOrNull()?.to
+        val finalClock = if (left >= 0) {
+            val futureSec = legs.drop(legIdx + 1).sumOf { l ->
+                (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
+            }
+            val totalSec = left * 120 + futureSec
+            java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
+                .format(java.util.Date(System.currentTimeMillis() + totalSec * 1000L))
+        } else null
         val ticker = "다음역 $next · ${leg?.to}까지 ${left}정거장"
         val track = leg?.takeIf { left >= 0 }?.let {
             val total = (StaticData.stationsBetween(it.line, it.from, it.to).size - 1)
@@ -172,13 +180,18 @@ class TripService : Service() {
             "${it.from} ●" + "━".repeat(doneN.coerceAtMost(8)) + "🚇" +
             "─".repeat(leftDisp.coerceAtMost(8)) + "○ ${it.to}"
         }
-        val title = if (left > 0) "다음역 $next · ${leg?.to}까지 ${left}정거장"
-                    else "경로 안내 중 (${legIdx + 1}/${legs.size} 구간)"
+        val title = if (left > 0)
+            "다음역 $next · ${left}정거장" + (finalClock?.let { " · $it 도착" } ?: "")
+        else "경로 안내 중 (${legIdx + 1}/${legs.size} 구간)"
         val compat = base(CH_CHIP)
             .setTicker(ticker)
             .setContentTitle(title)
             .setContentText(track ?: text)
-            .setSubText("${leg?.line ?: ""} ${legIdx + 1}/${legs.size}")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(buildString {
+                append(track ?: text)
+                finalClock?.let { append("\n🏁 ${finalDest} · $it 도착 예정") }
+            }))
+            .setSubText(leg?.line ?: "")
             .setShowWhen(false)
             .also { b ->
                 val total = StaticData.segmentOf(leg?.line ?: "1호선").size

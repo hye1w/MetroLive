@@ -364,8 +364,13 @@ fun TripScreen(onClose: () -> Unit) {
                             }
                         }
                         if (i == legs.lastIndex)
-                            Column(Modifier.padding(top = 8.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Spacer(Modifier.width(14.dp))   // 역 dot 열과 정렬
                                 Text(leg.to, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                                Spacer(Modifier.weight(1f))
                                 info?.let { inf ->
                                     val futureSec2 = legs.drop(inf.legIdx + 1).sumOf { l ->
                                         (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
@@ -373,11 +378,12 @@ fun TripScreen(onClose: () -> Unit) {
                                     val totalSec2 = ((liveLeft ?: inf.left).coerceAtLeast(0)) * 120 + futureSec2
                                     val clock2 = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
                                         .format(java.util.Date(System.currentTimeMillis() + totalSec2 * 1000L))
-                                    Text(
-                                        "약 ${(totalSec2 + 59) / 60}분 후 · $clock2 도착 예정",
-                                        fontSize = 13.sp, color = IosBlue, fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(top = 2.dp),
-                                    )
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("약 ${(totalSec2 + 59) / 60}분 후",
+                                            fontSize = 13.sp, color = IosBlue, fontWeight = FontWeight.Bold)
+                                        Text("$clock2 도착 예정",
+                                            fontSize = 11.sp, color = IosSecondary)
+                                    }
                                 }
                             }
                     }
