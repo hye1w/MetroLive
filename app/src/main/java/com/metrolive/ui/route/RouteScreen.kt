@@ -363,7 +363,11 @@ fun RouteScreen(
                             mids.forEachIndexed { mi, name ->
                                 if (mi == 0 || mi == mids.lastIndex) return@forEachIndexed
                                 val isFinal = false
-                                val hasTrain = i == selLeg && legTrains.any { t ->
+                                // 선택(추천) 열차가 이 역에 있을 때만 표시
+                                val chosenX = startTrainNoHolder.value
+                                val hasTrain = i == selLeg && chosenX != null && legTrains.any { t ->
+                                    com.metrolive.data.normalizeTrainNo(t.trainNo) ==
+                                        com.metrolive.data.normalizeTrainNo(chosenX) &&
                                     canonicalL.getOrNull(t.position.toInt())?.name == name
                                 }
                                 // 선택 열차의 이 역 도착 예상 (역간 평균 소요 기반)
@@ -394,8 +398,9 @@ fun RouteScreen(
                                     Spacer(Modifier.weight(1f))
                                     if (hasTrain) {
                                         val t = legTrains.first { tt ->
-                                            canonicalL.getOrNull(tt.position.toInt())?.name == name }
-                                        Text("🚇 ${t.destination} ${t.trainNo}",
+                                            com.metrolive.data.normalizeTrainNo(tt.trainNo) ==
+                                                com.metrolive.data.normalizeTrainNo(chosenX!!) }
+                                        Text("내 열차 · ${t.destination}",
                                             fontSize = 10.5.sp, color = c, fontWeight = FontWeight.Bold,
                                             modifier = Modifier.clip(RoundedCornerShape(6.dp))
                                                 .background(c.copy(alpha = .12f))

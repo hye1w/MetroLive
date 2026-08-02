@@ -59,7 +59,10 @@ class TripService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSession(); return START_NOT_STICKY }
         if (intent?.action == ACTION_SET_TRAIN) {
-            intent.getStringExtra(EXTRA_TRAIN)?.let { trainNo = it; alerted = false }
+            intent.getStringExtra(EXTRA_TRAIN)?.let { no ->
+                trainNo = no; alerted = false
+                TripState.info.value?.let { TripState.set(it.copy(trainNo = no)) }  // 즉시 반영
+            }
             return START_STICKY
         }
         if (intent?.action == ACTION_SET_BOARDING) {
@@ -109,7 +112,10 @@ class TripService : Service() {
                     }?.trainNo
             }
 
-            val me: Train? = trains.firstOrNull { it.trainNo == trainNo }
+            val me: Train? = trains.firstOrNull {
+                trainNo != null && com.metrolive.data.normalizeTrainNo(it.trainNo) ==
+                    com.metrolive.data.normalizeTrainNo(trainNo!!)
+            }
             if (me != null) {
                 val curIdx = me.position.toInt()
                 val left = if (forward) destIdx - curIdx else curIdx - destIdx

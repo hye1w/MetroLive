@@ -281,21 +281,29 @@ fun TripScreen(onClose: () -> Unit) {
                                 Box(Modifier.size(6.dp).clip(CircleShape)
                                     .background(if (done) IosSeparator else c.copy(alpha = .5f)))
                                 Spacer(Modifier.width(8.dp))
-                                Text(name, fontSize = 12.sp,
-                                    color = if (here.isNotEmpty()) c else IosSecondary,
-                                    fontWeight = if (here.isNotEmpty()) FontWeight.Bold else FontWeight.Normal)
-                                here.firstOrNull()?.let { tt ->
-                                    val mine = info?.trainNo?.let {
+                                val mineHere = here.any { tt ->
+                                    info?.trainNo?.let {
                                         com.metrolive.data.normalizeTrainNo(tt.trainNo) ==
-                                        com.metrolive.data.normalizeTrainNo(it) } == true
+                                        com.metrolive.data.normalizeTrainNo(it)
+                                    } == true
+                                }
+                                Text(name, fontSize = 12.sp,
+                                    color = if (mineHere) IosBlue else IosSecondary,
+                                    fontWeight = if (mineHere) FontWeight.Bold else FontWeight.Normal)
+                                // 내 열차만 태그 표시 (타 열차 정보 미표시)
+                                here.firstOrNull { tt ->
+                                    info?.trainNo?.let {
+                                        com.metrolive.data.normalizeTrainNo(tt.trainNo) ==
+                                        com.metrolive.data.normalizeTrainNo(it)
+                                    } == true
+                                }?.let { tt ->
                                     Spacer(Modifier.width(6.dp))
                                     Text(
-                                        (if (mine) "내 열차 · " else "🚇 ") + "${tt.destination} ${tt.trainNo}",
-                                        fontSize = 10.5.sp,
-                                        color = if (mine) IosBlue else c,
+                                        "내 열차 · ${tt.destination}",
+                                        fontSize = 10.5.sp, color = IosBlue,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.clip(RoundedCornerShape(6.dp))
-                                            .background((if (mine) IosBlue else c).copy(alpha = .12f))
+                                            .background(IosBlue.copy(alpha = .12f))
                                             .padding(horizontal = 6.dp, vertical = 2.dp))
                                 }
                                 // 내 열차 기준 이 역까지 남은 시간 (앞쪽 역만)
@@ -314,8 +322,22 @@ fun TripScreen(onClose: () -> Unit) {
                             }
                         }
                         if (i == legs.lastIndex)
-                            Text(leg.to, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                                modifier = Modifier.padding(top = 6.dp))
+                            Column(Modifier.padding(top = 8.dp)) {
+                                Text(leg.to, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                                info?.let { inf ->
+                                    val futureSec2 = legs.drop(inf.legIdx + 1).sumOf { l ->
+                                        (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
+                                    }
+                                    val totalSec2 = (inf.left.coerceAtLeast(0)) * 120 + futureSec2
+                                    val clock2 = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
+                                        .format(java.util.Date(System.currentTimeMillis() + totalSec2 * 1000L))
+                                    Text(
+                                        "약 ${(totalSec2 + 59) / 60}분 후 · $clock2 도착 예정",
+                                        fontSize = 13.sp, color = IosBlue, fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
+                                }
+                            }
                     }
                 }
             }
