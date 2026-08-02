@@ -36,6 +36,7 @@ fun TripScreen(onClose: () -> Unit) {
     val info by TripState.info.collectAsState()
     val legs by TripState.legs.collectAsState()
     val ctx = LocalContext.current
+    var pendingTrain by remember { mutableStateOf<Train?>(null) }
 
     Column(Modifier.fillMaxSize().background(IosBg).statusBarsPadding()) {
         Row(
@@ -46,9 +47,19 @@ fun TripScreen(onClose: () -> Unit) {
                 modifier = Modifier.clickable(onClick = onClose).padding(horizontal = 8.dp))
             Column(Modifier.padding(start = 4.dp)) {
                 Text("경로 안내 중", style = MaterialTheme.typography.titleMedium)
-                info?.let {
-                    Text("다음역 ${it.next} · ${it.dest}까지 ${if (it.left > 0) "${it.left}정거장" else "확인 중"}",
-                        style = MaterialTheme.typography.labelSmall)
+                info?.let { inf ->
+                    // 남은 시간 추정: 현 구간 잔여 + 이후 구간(역×2분 + 환승 4분)
+                    val futureSec = legs.drop(inf.legIdx + 1).sumOf { l ->
+                        (StaticData.stationsBetween(l.line, l.from, l.to).size - 1) * 120 + 240
+                    }
+                    val totalSec = (inf.left.coerceAtLeast(0)) * 120 + futureSec
+                    val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
+                        .format(java.util.Date(System.currentTimeMillis() + totalSec * 1000L))
+                    Text(
+                        "다음역 ${inf.next} · ${if (inf.left > 0) "${inf.left}정거장" else "확인 중"}" +
+                        " · ${legs.lastOrNull()?.to ?: inf.dest} ${clock} 도착 예정",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
             }
         }
@@ -108,8 +119,16 @@ fun TripScreen(onClose: () -> Unit) {
                 val fwd = (idxMap[curLeg.to] ?: 0) > (idxMap[curLeg.from] ?: 0)
                 val slice = canonical.map { it.name }.let { if (fwd) it else it.reversed() }
                 val listState = rememberLazyListState()
-                LaunchedEffect(selLeg, slice.size) {
-                    listState.scrollToItem((slice.indexOf(curLeg.from) - 1).coerceAtLeast(0))
+                LaunchedEffect(selLeg, slice.size, info?.trainNo, legTrains.size) {
+                    val myName = info?.trainNo?.let { no ->
+                        legTrains.firstOrNull {
+                            com.metrolive.data.normalizeTrainNo(it.trainNo) ==
+                            com.metrolive.data.normalizeTrainNo(no)
+                        }
+                    }?.let { canonical.getOrNull(it.position.toInt())?.name }
+                    val target = myName?.let { slice.indexOf(it) }?.takeIf { it >= 0 }
+                        ?: slice.indexOf(curLeg.from)
+                    listState.scrollToItem((target - 1).coerceAtLeast(0))
                 }
                 LazyRow(state = listState) {
                     itemsIndexed(slice) { _, name ->
@@ -122,12 +141,20 @@ fun TripScreen(onClose: () -> Unit) {
                                     val isMine = info?.trainNo?.let {
                                         com.metrolive.data.normalizeTrainNo(t.trainNo) ==
                                         com.metrolive.data.normalizeTrainNo(it) } == true
+                                    val isPending = pendingTrain?.trainNo == t.trainNo
                                     Column(
                                         Modifier.width(72.dp).height(52.dp)
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(if (isMine) IosBlue.copy(alpha = .08f) else IosCard)
-                                            .border(if (isMine) 2.dp else 1.5.dp,
-                                                if (isMine) IosBlue else legColor,
+                                            .clickable(enabled = !isMine) {
+                                                pendingTrain = if (isPending) null else t
+                                            }
+                                            .background(
+                                                if (isMine) IosBlue.copy(alpha = .08f)
+                                                else if (isPending) IosOrange.copy(alpha = .12f)
+                                                else IosCard)
+                                            .border(if (isMine || isPending) 2.dp else 1.5.dp,
+                                                if (isMine) IosBlue
+                                                else if (isPending) IosOrange else legColor,
                                                 RoundedCornerShape(10.dp))
                                             .padding(horizontal = 4.dp, vertical = 4.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -157,6 +184,25 @@ fun TripScreen(onClose: () -> Unit) {
                                 fontWeight = if (isEnd) FontWeight.ExtraBold else FontWeight.Medium)
                         }
                     }
+                }
+            }
+            pendingTrain?.let { pt ->
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .background(IosOrange.copy(alpha = .1f))
+                        .border(1.dp, IosOrange, RoundedCornerShape(14.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("${pt.destination} · ${pt.trainNo}", fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Button(
+                        onClick = { TripService.setTrain(ctx, pt.trainNo); pendingTrain = null },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = IosOrange),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    ) { Text("이 열차로 알림 받기", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                 }
             }
             Spacer(Modifier.height(16.dp))

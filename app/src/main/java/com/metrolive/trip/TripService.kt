@@ -58,6 +58,10 @@ class TripService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSession(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_SET_TRAIN) {
+            intent.getStringExtra(EXTRA_TRAIN)?.let { trainNo = it; alerted = false }
+            return START_STICKY
+        }
         if (intent?.action == ACTION_SET_BOARDING) {
             intent.getIntExtra(EXTRA_CAR, -1).takeIf { it > 0 }?.let {
                 boarding = BoardingPosition(it, intent.getIntExtra(EXTRA_DOOR, 2))
@@ -125,6 +129,10 @@ class TripService : Service() {
                     )
                 }
             } else {
+                if (alerted && legIdx == legs.lastIndex && trainNo != null) {
+                    // 1정거장 전 알림 후 열차가 피드에서 사라짐 = 종착 도착으로 간주
+                    notifyArrived(leg); stopSession(); return
+                }
                 updateNotification(ongoingNotification(
                     if (now < adoptAfter) "${leg.line}으로 환승 중 · 탑승하면 자동 추적됩니다"
                     else "${leg.line} 열차 위치 확인 중…", -1))
@@ -142,12 +150,20 @@ class TripService : Service() {
             leg?.line ?: "", next, leg?.to ?: "", left, legIdx, legs.size,
             alerting = false, trainNo = trainNo))
         val ticker = "다음역 $next · ${leg?.to}까지 ${left}정거장"
+        val track = leg?.let {
+            val total = StaticData.stationsBetween(it.line, it.from, it.to).size - 1
+            if (total > 0 && left in 0..total) {
+                val doneN = (total - left).coerceIn(0, total)
+                "●" + "━".repeat(doneN.coerceAtMost(8)) + "🚇" +
+                "─".repeat(left.coerceAtMost(8)) + "○ ${it.to}"
+            } else null
+        }
         val title = if (left > 0) "다음역 $next · ${leg?.to}까지 ${left}정거장"
                     else "경로 안내 중 (${legIdx + 1}/${legs.size} 구간)"
         val compat = base(CH_CHIP)
             .setTicker(ticker)
             .setContentTitle(title)
-            .setContentText(text)
+            .setContentText(track ?: text)
             .setSubText("${leg?.line ?: ""} ${legIdx + 1}/${legs.size}")
             .setShowWhen(false)
             .also { b ->
@@ -176,17 +192,17 @@ class TripService : Service() {
     private fun alertNotification(leg: Leg, etaSec: Int): Notification {
         val isFinal = legIdx == legs.lastIndex
         val g = StaticData.exitGuide(leg.to, upLine = leg.up, boarding = boarding)
-        val eta = if (etaSec > 0) "약 %d:%02d 후".format(etaSec / 60, etaSec % 60) else "곧"
+        val eta = if (etaSec in 1..300) "약 %d:%02d 후".format(etaSec / 60, etaSec % 60) else "곧"
         val body = buildString {
-            append("${leg.to} · $eta 도착\n")
-            append("내리는 문 : ${g.doorSide.label} ${g.doorSide.arrow}\n")
+            append("🚉 ${leg.to} · $eta 도착\n")
+            append("🚪 내리는 문 ${g.doorSide.label} ${g.doorSide.arrow}")
             if (isFinal) {
-                append("계단 방향 : 내려서 ${g.stairSide.label} ${g.stairSide.arrow} (${g.stairDistanceM}m) · ${g.exitNo}")
+                append("\n🧭 계단 내려서 ${g.stairSide.label} ${g.stairSide.arrow} ${g.stairDistanceM}m · ${g.exitNo}")
             } else {
                 val nl = legs[legIdx + 1]
-                append("${nl.line} 환승 준비")
+                append("\n🔁 ${nl.line} 환승")
                 StaticData.transferTip(leg.to, leg.line, nl.line)?.let {
-                    append(" · 빠른 환승 ${it.car}칸"); it.platform?.let { pf -> append(" · $pf") }
+                    append(" · ${it.car}칸"); it.platform?.let { pf -> append(" · $pf") }
                 }
             }
         }
@@ -268,7 +284,7 @@ class TripService : Service() {
         TripState.setLegs(emptyList())
         scope.coroutineContext.cancelChildren()
         stopForeground(STOP_FOREGROUND_REMOVE)
-        nm().cancel(NOTI_ID + 1)
+        nm().cancel(NOTI_ID)          // 진행 알림만 제거, 도착 알림(id+1)은 유지
         stopSelf()
     }
 
@@ -282,6 +298,13 @@ class TripService : Service() {
         private const val CH_ALERT = "trip_alert"
         const val ACTION_STOP = "com.metrolive.STOP_TRIP"
         const val ACTION_SET_BOARDING = "com.metrolive.SET_BOARDING"
+        const val ACTION_SET_TRAIN = "com.metrolive.SET_TRAIN"
+
+        fun setTrain(ctx: Context, trainNo: String) {
+            ctx.startService(
+                Intent(ctx, TripService::class.java).setAction(ACTION_SET_TRAIN)
+                    .putExtra(EXTRA_TRAIN, trainNo))
+        }
 
         fun updateBoarding(ctx: Context, pos: BoardingPosition?) {
             ctx.startService(

@@ -274,8 +274,11 @@ private fun TrainMap(
         }
 
     // 전체 영역 어디서든 스크롤되는 표준 리스트
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(line, upLine) { listState.scrollToItem(0) }   // 전환 시 항상 최상단
     LazyColumn(
         modifier.fillMaxWidth(),
+        state = listState,
         contentPadding = PaddingValues(top = 8.dp, bottom = 280.dp),
     ) {
         itemsIndexed(stations, key = { _, s2 -> s2.name }) { i, stn ->
@@ -287,7 +290,18 @@ private fun TrainMap(
                         .fillMaxHeight()
                         .background(lineColor)
                 )
-                // 역 마커 + 이름
+                // 이 구간의 열차 카드 (균일 크기 · 겹침 허용 · 더 진행한 열차가 위)
+                byItem[i]?.sortedBy { it.second }?.forEach { (t, frac) ->
+                    TrainCard(
+                        train = t, lineColor = lineColor,
+                        arrow = arrow, selected = t.trainNo == selectedNo,
+                        onTap = { onTrainTap(t.trainNo) },
+                        modifier = Modifier.align(Alignment.TopEnd)
+                            .offset(y = StationGap * frac.coerceAtMost(0.4f))
+                            .padding(end = 14.dp),
+                    )
+                }
+                // 역 마커 + 이름 (카드보다 위에 그려짐)
                 Row(
                     Modifier.align(Alignment.TopStart).padding(start = TrackX - 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -297,39 +311,14 @@ private fun TrainMap(
                             .clip(CircleShape).background(IosCard)
                             .border(4.dp, if (stn.isTransfer) IosLabel else lineColor, CircleShape)
                     )
-                    Spacer(Modifier.width(14.dp))
-                    Column {
-                        Text(stn.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(
+                        Modifier.clip(RoundedCornerShape(8.dp))
+                            .background(IosBg.copy(alpha = .92f))
+                            .padding(horizontal = 4.dp),
+                    ) {
+                        Text(stn.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         stn.transferInfo?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
-                    }
-                }
-                // 이 구간의 열차 카드 (여러 대면 세로 스택으로 겹침 방지)
-                byItem[i]?.let { group ->
-                    if (group.size == 1) {
-                        val (t, frac) = group[0]
-                        TrainCard(
-                            train = t, lineColor = lineColor,
-                            arrow = arrow, selected = t.trainNo == selectedNo,
-                            onTap = { onTrainTap(t.trainNo) },
-                            modifier = Modifier.align(Alignment.TopEnd)
-                                .offset(y = StationGap * frac.coerceAtMost(0.45f))
-                                .padding(start = 118.dp, end = 16.dp),
-                        )
-                    } else {
-                        Column(
-                            Modifier.align(Alignment.TopEnd)
-                                .padding(start = 118.dp, end = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            group.sortedBy { it.second }.forEach { (t, _) ->
-                                TrainCard(
-                                    train = t, lineColor = lineColor,
-                                    arrow = arrow, selected = t.trainNo == selectedNo,
-                                    onTap = { onTrainTap(t.trainNo) },
-                                    modifier = Modifier,
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -343,7 +332,8 @@ private fun TrainCard(
     arrow: String, selected: Boolean, onTap: () -> Unit, modifier: Modifier,
 ) {
     Row(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(GlassWhite)
+        modifier.width(232.dp).height(56.dp)
+            .clip(RoundedCornerShape(16.dp)).background(IosCard)
             .border(
                 if (selected) 1.5.dp else 0.5.dp,
                 if (selected) IosBlue else Color.White.copy(alpha = .7f),

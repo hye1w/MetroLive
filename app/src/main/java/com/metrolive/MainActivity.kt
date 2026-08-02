@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.metrolive.data.StaticData
 import com.metrolive.trip.TripService
+import com.metrolive.trip.TripState
 import com.metrolive.data.Network
 import com.metrolive.ui.home.HomeScreen
 import com.metrolive.ui.live.LiveMapScreen
@@ -51,6 +52,9 @@ class MainActivity : ComponentActivity() {
                 var tab by remember { mutableIntStateOf(0) }             // 0 홈, 1 실시간
                 var route by remember { mutableStateOf<Pair<String, String>?>(null) }
                 var tripCardVisible by remember { mutableStateOf(expandTripCard) }
+                LaunchedEffect(Unit) {   // 안내 중이면 앱 진입 시 안내 화면 표시
+                    if (TripState.info.value != null) tripCardVisible = true
+                }
                 val vm: LiveMapViewModel = viewModel()
                 val st by vm.state.collectAsState()
 

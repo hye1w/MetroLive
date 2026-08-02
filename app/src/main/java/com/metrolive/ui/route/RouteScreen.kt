@@ -391,8 +391,18 @@ fun RouteScreen(
                                                 else if (hasTrain) c else IosSecondary,
                                         fontWeight = if (isFinal || hasTrain) FontWeight.Bold
                                                      else FontWeight.Normal)
+                                    Spacer(Modifier.weight(1f))
+                                    if (hasTrain) {
+                                        val t = legTrains.first { tt ->
+                                            canonicalL.getOrNull(tt.position.toInt())?.name == name }
+                                        Text("🚇 ${t.destination} ${t.trainNo}",
+                                            fontSize = 10.5.sp, color = c, fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                                                .background(c.copy(alpha = .12f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                    }
                                     etaHere?.let { sec ->
-                                        Spacer(Modifier.weight(1f))
                                         val clock = if (isFinal) {
                                             val t = java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
                                                 .format(java.util.Date(System.currentTimeMillis() + sec * 1000L))
@@ -401,16 +411,6 @@ fun RouteScreen(
                                         Text("약 %d:%02d 후%s".format(sec / 60, sec % 60, clock),
                                             fontSize = if (isFinal) 12.sp else 11.sp,
                                             color = IosBlue, fontWeight = FontWeight.Bold)
-                                    }
-                                    if (hasTrain) {
-                                        Spacer(Modifier.width(6.dp))
-                                        val t = legTrains.first { tt ->
-                                            canonicalL.getOrNull(tt.position.toInt())?.name == name }
-                                        Text("🚇 ${t.destination} ${t.trainNo}",
-                                            fontSize = 10.5.sp, color = c, fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.clip(RoundedCornerShape(6.dp))
-                                                .background(c.copy(alpha = .12f))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp))
                                     }
                                 }
                             }
